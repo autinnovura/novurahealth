@@ -1,7 +1,6 @@
 'use client'
 
 import { useState } from 'react'
-import { supabase } from './lib/supabase'
 
 export default function Home() {
   const [email, setEmail] = useState('')
@@ -16,16 +15,16 @@ export default function Home() {
     setError('')
 
     try {
-      const { error: dbError } = await supabase
-        .from('waitlist')
-        .insert({ email: currentEmail, source: location })
+      const res = await fetch('/api/waitlist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: currentEmail, source: location })
+      })
 
-      if (dbError) {
-        if (dbError.code === '23505') {
-          setError("You're already on the list!")
-        } else {
-          setError('Something went wrong. Try again.')
-        }
+      const data = await res.json()
+
+      if (!res.ok) {
+        setError(data.error || 'Something went wrong. Try again.')
         return
       }
 
