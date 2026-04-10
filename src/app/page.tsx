@@ -43,12 +43,20 @@ export default function Home() {
           <a href="#" className="text-xl font-bold tracking-tight text-[#2D5A3D]">
             Novura<span className="text-[#C4742B]">Health</span>
           </a>
-          <button
-            onClick={() => document.getElementById('waitlist-input')?.focus()}
-            className="bg-[#2D5A3D] text-white px-5 py-2.5 rounded-full text-sm font-semibold hover:bg-[#3A7A52] transition-colors cursor-pointer"
-          >
-            Join the waitlist
-          </button>
+          <div className="flex items-center gap-3">
+            <a
+              href="/login"
+              className="text-sm font-medium text-[#2D5A3D] hover:text-[#3A7A52] transition-colors"
+            >
+              Log in
+            </a>
+            <a
+              href="/signup"
+              className="bg-[#2D5A3D] text-white px-5 py-2.5 rounded-full text-sm font-semibold hover:bg-[#3A7A52] transition-colors"
+            >
+              Get started free
+            </a>
+          </div>
         </div>
       </nav>
 
@@ -99,9 +107,20 @@ export default function Home() {
             <p className="text-[#C4742B] text-sm mb-4">{error}</p>
           )}
 
-          <p className="text-sm text-[#9B9B93]">
+          <p className="text-sm text-[#9B9B93] mb-6">
             Free to join. No spam. No medical advice. Just early access.
           </p>
+
+          {/* TRY NOVA CTA */}
+          <div className="mt-2">
+            <a
+              href="/signup"
+              className="inline-block bg-[#C4742B] text-white px-8 py-3.5 rounded-full text-base font-semibold hover:bg-[#a86224] transition-colors"
+            >
+              Try Nova — AI Coach (Free)
+            </a>
+            <p className="text-xs text-[#9B9B93] mt-2">No credit card required. Start chatting in 60 seconds.</p>
+          </div>
 
           {/* STATS */}
           <div className="flex flex-wrap justify-center gap-8 sm:gap-16 mt-14">
@@ -244,37 +263,47 @@ export default function Home() {
       <section className="bg-[#2D5A3D] py-20 px-6 text-center">
         <div className="max-w-xl mx-auto">
           <h2 className="text-3xl sm:text-4xl font-bold text-white mb-3 tracking-tight">
-            Join the waitlist
+            Ready to meet your AI coach?
           </h2>
           <p className="text-white/60 text-lg mb-8">
-            Be the first to get access when we launch. Early supporters get exclusive pricing.
+            Sign up free and start chatting with Nova in 60 seconds. No credit card required.
           </p>
 
-          {!bottomSubmitted ? (
-            <form
-              onSubmit={(e) => handleSubmit(e, 'bottom')}
-              className="flex flex-col sm:flex-row gap-3 max-w-md mx-auto"
-            >
-              <input
-                type="email"
-                required
-                value={bottomEmail}
-                onChange={(e) => setBottomEmail(e.target.value)}
-                placeholder="Enter your email"
-                className="flex-1 px-5 py-3.5 rounded-full border-none bg-white/15 text-white text-base outline-none focus:bg-white/25 transition-colors placeholder:text-white/45"
-              />
-              <button
-                type="submit"
-                className="bg-white text-[#2D5A3D] px-8 py-3.5 rounded-full text-base font-semibold hover:bg-white/90 transition-colors cursor-pointer whitespace-nowrap"
+          <a
+            href="/signup"
+            className="inline-block bg-white text-[#2D5A3D] px-10 py-4 rounded-full text-lg font-semibold hover:bg-white/90 transition-colors mb-6"
+          >
+            Get started free
+          </a>
+
+          <div className="border-t border-white/10 pt-8 mt-8">
+            <p className="text-white/40 text-sm mb-4">Or join the waitlist for updates</p>
+            {!bottomSubmitted ? (
+              <form
+                onSubmit={(e) => handleSubmit(e, 'bottom')}
+                className="flex flex-col sm:flex-row gap-3 max-w-md mx-auto"
               >
-                Get early access
-              </button>
-            </form>
-          ) : (
-            <div className="bg-white/15 text-white px-6 py-3.5 rounded-full text-base font-medium max-w-md mx-auto">
-              You&apos;re on the list. We&apos;ll be in touch soon.
-            </div>
-          )}
+                <input
+                  type="email"
+                  required
+                  value={bottomEmail}
+                  onChange={(e) => setBottomEmail(e.target.value)}
+                  placeholder="Enter your email"
+                  className="flex-1 px-5 py-3.5 rounded-full border-none bg-white/15 text-white text-base outline-none focus:bg-white/25 transition-colors placeholder:text-white/45"
+                />
+                <button
+                  type="submit"
+                  className="bg-white/20 text-white px-8 py-3.5 rounded-full text-base font-semibold hover:bg-white/30 transition-colors cursor-pointer whitespace-nowrap"
+                >
+                  Join waitlist
+                </button>
+              </form>
+            ) : (
+              <div className="bg-white/15 text-white px-6 py-3.5 rounded-full text-base font-medium max-w-md mx-auto">
+                You&apos;re on the list. We&apos;ll be in touch soon.
+              </div>
+            )}
+          </div>
         </div>
       </section>
 
