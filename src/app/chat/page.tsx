@@ -7,23 +7,57 @@ interface Message {
   content: string
 }
 
+interface UserProfile {
+  name?: string
+  medication?: string
+  dose?: string
+  startDate?: string
+  currentWeight?: string
+  goalWeight?: string
+  primaryGoal?: string
+  biggestChallenge?: string
+  exerciseLevel?: string
+}
+
 export default function Chat() {
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      role: 'assistant',
-      content: "Hey! I'm Nova, your AI wellness coach 👋 I'm here to help you navigate your GLP-1 journey — whether that's managing side effects, hitting your protein goals, building exercise habits, or planning for the future.\n\nWhat's on your mind today?"
-    }
-  ])
+  const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
+
+  // Load profile and set welcome message
+  useEffect(() => {
+    const saved = localStorage.getItem('novura_profile')
+    if (saved) {
+      const profile = JSON.parse(saved)
+      setUserProfile(profile)
+      const name = profile.name && profile.name !== 'Skipped' ? profile.name : ''
+      setMessages([{
+        role: 'assistant',
+        content: `Hey${name ? ` ${name}` : ''}! I'm Nova, your AI wellness coach 👋 ${
+          profile.medication && profile.medication !== 'Skipped'
+            ? `I see you're on ${profile.medication}${profile.dose && profile.dose !== 'Skipped' ? ` at ${profile.dose}` : ''} — I've got you covered.`
+            : "I'm here to help with your GLP-1 journey."
+        }\n\n${
+          profile.biggestChallenge && profile.biggestChallenge !== 'Skipped'
+            ? `You mentioned ${profile.biggestChallenge.toLowerCase()} is your biggest challenge — let's work on that together. `
+            : ''
+        }What would you like to work on today?`
+      }])
+    } else {
+      setMessages([{
+        role: 'assistant',
+        content: "Hey! I'm Nova, your AI wellness coach 👋 I'm here to help you navigate your GLP-1 journey — whether that's managing side effects, hitting your protein goals, building exercise habits, or planning for the future.\n\nWhat's on your mind today?"
+      }])
+    }
+  }, [])
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  // Auto-resize textarea
   useEffect(() => {
     if (inputRef.current) {
       inputRef.current.style.height = 'auto'
@@ -45,7 +79,10 @@ export default function Chat() {
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: newMessages.map(m => ({ role: m.role, content: m.content })) })
+        body: JSON.stringify({
+          messages: newMessages.map(m => ({ role: m.role, content: m.content })),
+          userProfile: userProfile || undefined
+        })
       })
 
       const data = await res.json()
@@ -69,6 +106,10 @@ export default function Chat() {
     }
   }
 
+  const proteinTarget = userProfile?.goalWeight && userProfile.goalWeight !== 'Skipped'
+    ? `${Math.round(Number(userProfile.goalWeight) * 0.8)}g`
+    : null
+
   return (
     <div className="flex flex-col h-screen bg-[#FFFBF5]">
       {/* HEADER */}
@@ -85,9 +126,16 @@ export default function Chat() {
           <h1 className="text-white font-semibold text-sm leading-tight">Nova</h1>
           <p className="text-white/50 text-xs">AI Wellness Coach</p>
         </div>
-        <div className="ml-auto flex items-center gap-1">
-          <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
-          <span className="text-white/40 text-xs">Online</span>
+        <div className="ml-auto flex items-center gap-2">
+          {proteinTarget && (
+            <div className="bg-white/10 px-2.5 py-1 rounded-full">
+              <span className="text-white/70 text-[10px]">🎯 Protein: {proteinTarget}/day</span>
+            </div>
+          )}
+          <div className="flex items-center gap-1">
+            <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
+            <span className="text-white/40 text-xs">Online</span>
+          </div>
         </div>
       </header>
 
@@ -134,10 +182,12 @@ export default function Chat() {
       {messages.length <= 1 && (
         <div className="px-4 pb-2 flex flex-wrap gap-2">
           {[
-            "I just started my GLP-1 — what should I know?",
+            ...(userProfile?.biggestChallenge && userProfile.biggestChallenge !== 'Skipped'
+              ? [`Help me with ${userProfile.biggestChallenge.toLowerCase()}`]
+              : ["I just started my GLP-1 — what should I know?"]),
             "Help me hit my protein goals",
             "I'm dealing with nausea",
-            "How do I prevent muscle loss?",
+            "What should I eat today?",
           ].map((suggestion) => (
             <button
               key={suggestion}
@@ -166,7 +216,7 @@ export default function Chat() {
             onKeyDown={handleKeyDown}
             placeholder="Ask Nova anything..."
             rows={1}
-            className="flex-1 resize-none bg-[#F5F5F0] rounded-2xl px-4 py-3 text-sm outline-none placeholder:text-[#9B9B93] focus:ring-2 focus:ring-[#2D5A3D]/20 transition-all"
+            className="flex-1 resize-none bg-[#F5F5F0] rounded-2xl px-4 py-3 text-sm text-[#1E1E1C] outline-none placeholder:text-[#9B9B93] focus:ring-2 focus:ring-[#2D5A3D]/20 transition-all"
           />
           <button
             type="submit"
