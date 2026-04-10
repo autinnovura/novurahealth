@@ -29,10 +29,8 @@ export default function Chat() {
       if (!profile) { router.push('/onboarding'); return }
       setUserProfile(profile)
 
-      // Fetch all user logs for Nova context
       await refreshLogs(user.id, profile)
 
-      // Load conversation history
       const { data: savedMessages } = await supabase.from('messages').select('role, content').eq('user_id', user.id).order('created_at', { ascending: true }).limit(50)
 
       const name = profile.name || ''
@@ -122,7 +120,6 @@ export default function Chat() {
     setIsLoading(true)
     await saveMessage('user', userMessage.content)
 
-    // Refresh logs before sending to get latest data
     if (userId && userProfile) await refreshLogs(userId, userProfile)
 
     try {
@@ -161,6 +158,7 @@ export default function Chat() {
 
   return (
     <div className="flex flex-col h-screen bg-[#FFFBF5]">
+      {/* HEADER */}
       <header className="bg-[#2D5A3D] px-4 py-3 flex items-center gap-3 shrink-0">
         <a href="/dashboard" className="text-white/60 hover:text-white transition-colors">
           <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg>
@@ -177,6 +175,7 @@ export default function Chat() {
         </div>
       </header>
 
+      {/* MESSAGES */}
       <div className="flex-1 overflow-y-auto px-4 py-6 space-y-4">
         {messages.map((msg, i) => (
           <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
@@ -199,6 +198,7 @@ export default function Chat() {
         <div ref={messagesEndRef} />
       </div>
 
+      {/* QUICK REPLIES */}
       {messages.length <= 2 && (
         <div className="px-4 pb-2 flex flex-wrap gap-2">
           {["How's my nutrition today?", "Help me hit my protein goal", "I'm dealing with nausea", "What should I eat for dinner?"].map(s => (
@@ -208,6 +208,7 @@ export default function Chat() {
         </div>
       )}
 
+      {/* INPUT */}
       <div className="shrink-0 border-t border-black/5 bg-white px-4 py-3">
         <form onSubmit={handleSubmit} className="flex items-end gap-2 max-w-3xl mx-auto">
           <textarea ref={inputRef} value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={handleKeyDown}
@@ -220,6 +221,22 @@ export default function Chat() {
         </form>
         <p className="text-center text-[10px] text-[#9B9B93] mt-2">Nova is an AI wellness coach, not a medical professional. Always consult your healthcare provider for medical advice.</p>
       </div>
+
+      {/* BOTTOM NAV */}
+      <nav className="shrink-0 bg-white border-t border-black/5 px-4 py-2 flex justify-around">
+        <a href="/dashboard" className="flex flex-col items-center gap-0.5 text-[#9B9B93] hover:text-[#2D5A3D] transition-colors">
+          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-4 0h4" /></svg>
+          <span className="text-[10px] font-medium">Home</span>
+        </a>
+        <a href="/chat" className="flex flex-col items-center gap-0.5 text-[#2D5A3D]">
+          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
+          <span className="text-[10px] font-semibold">Nova</span>
+        </a>
+        <a href="#" className="flex flex-col items-center gap-0.5 text-[#9B9B93]">
+          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+          <span className="text-[10px] font-medium">Savings</span>
+        </a>
+      </nav>
     </div>
   )
 }
