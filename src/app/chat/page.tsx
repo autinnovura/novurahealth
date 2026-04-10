@@ -1,6 +1,8 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
+import { supabase } from '../lib/supabase'
 
 interface Message {
   role: 'user' | 'assistant'
@@ -11,48 +13,94 @@ interface UserProfile {
   name?: string
   medication?: string
   dose?: string
-  startDate?: string
-  currentWeight?: string
-  goalWeight?: string
-  primaryGoal?: string
-  biggestChallenge?: string
-  exerciseLevel?: string
+  start_date?: string
+  current_weight?: string
+  goal_weight?: string
+  primary_goal?: string
+  biggest_challenge?: string
+  exercise_level?: string
 }
 
 export default function Chat() {
+  const router = useRouter()
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null)
+  const [userId, setUserId] = useState<string | null>(null)
+  const [isInitialized, setIsInitialized] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
-  // Load profile and set welcome message
+  // Auth check + load profile + load conversation history
   useEffect(() => {
-    const saved = localStorage.getItem('novura_profile')
-    if (saved) {
-      const profile = JSON.parse(saved)
+    async function init() {
+      const { data: { user } } = await supabase.auth.getUser()
+
+      if (!user) {
+        router.push('/login')
+        return
+      }
+
+      setUserId(user.id)
+
+      // Load profile from database
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', user.id)
+        .single()
+
+      if (!profile) {
+        router.push('/onboarding')
+        return
+      }
+
       setUserProfile(profile)
-      const name = profile.name && profile.name !== 'Skipped' ? profile.name : ''
-      setMessages([{
+
+      // Load conversation history from database (last 50 messages)
+      const { data: savedMessages } = await supabase
+        .from('messages')
+        .select('role, content')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: true })
+        .limit(50)
+
+      const name = profile.name || ''
+      const welcomeMessage: Message = {
         role: 'assistant',
         content: `Hey${name ? ` ${name}` : ''}! I'm Nova, your AI wellness coach 👋 ${
-          profile.medication && profile.medication !== 'Skipped'
-            ? `I see you're on ${profile.medication}${profile.dose && profile.dose !== 'Skipped' ? ` at ${profile.dose}` : ''} — I've got you covered.`
+          profile.medication
+            ? `I see you're on ${profile.medication}${profile.dose ? ` at ${profile.dose}` : ''} — I've got you covered.`
             : "I'm here to help with your GLP-1 journey."
         }\n\n${
-          profile.biggestChallenge && profile.biggestChallenge !== 'Skipped'
-            ? `You mentioned ${profile.biggestChallenge.toLowerCase()} is your biggest challenge — let's work on that together. `
+          profile.biggest_challenge
+            ? `You mentioned ${profile.biggest_challenge.toLowerCase()} is your biggest challenge — let's work on that together. `
             : ''
         }What would you like to work on today?`
-      }])
-    } else {
-      setMessages([{
-        role: 'assistant',
-        content: "Hey! I'm Nova, your AI wellness coach 👋 I'm here to help you navigate your GLP-1 journey — whether that's managing side effects, hitting your protein goals, building exercise habits, or planning for the future.\n\nWhat's on your mind today?"
-      }])
+      }
+
+      if (savedMessages && savedMessages.length > 0) {
+        // Returning user — show history with a "welcome back" note
+        const history = savedMessages.map((m: { role: string; content: string }) => ({
+          role: m.role as 'user' | 'assistant',
+          content: m.content
+        }))
+        const welcomeBack: Message = {
+          role: 'assistant',
+          content: `Welcome back${name ? `, ${name}` : ''}! 👋 I remember our last conversation. What would you like to work on today?`
+        }
+        setMessages([...history, welcomeBack])
+      } else {
+        // New user — show personalized welcome
+        setMessages([welcomeMessage])
+      }
+
+      setIsInitialized(true)
     }
-  }, [])
+
+    init()
+  }, [router])
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -65,6 +113,15 @@ export default function Chat() {
     }
   }, [input])
 
+  async function saveMessage(role: 'user' | 'assistant', content: string) {
+    if (!userId) return
+    await supabase.from('messages').insert({
+      user_id: userId,
+      role,
+      content,
+    })
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!input.trim() || isLoading) return
@@ -74,6 +131,9 @@ export default function Chat() {
     setMessages(newMessages)
     setInput('')
     setIsLoading(true)
+
+    // Save user message to database
+    await saveMessage('user', userMessage.content)
 
     try {
       const res = await fetch('/api/chat', {
@@ -86,14 +146,17 @@ export default function Chat() {
       })
 
       const data = await res.json()
+      const assistantContent = !res.ok
+        ? (data.error || "I'm having trouble right now. Please try again.")
+        : data.message
 
-      if (!res.ok) {
-        setMessages([...newMessages, { role: 'assistant', content: data.error || "I'm having trouble right now. Please try again." }])
-      } else {
-        setMessages([...newMessages, { role: 'assistant', content: data.message }])
-      }
+      setMessages([...newMessages, { role: 'assistant', content: assistantContent }])
+
+      // Save assistant message to database
+      await saveMessage('assistant', assistantContent)
     } catch {
-      setMessages([...newMessages, { role: 'assistant', content: "I'm having trouble connecting right now. Please try again in a moment." }])
+      const errorMsg = "I'm having trouble connecting right now. Please try again in a moment."
+      setMessages([...newMessages, { role: 'assistant', content: errorMsg }])
     } finally {
       setIsLoading(false)
     }
@@ -106,9 +169,25 @@ export default function Chat() {
     }
   }
 
-  const proteinTarget = userProfile?.goalWeight && userProfile.goalWeight !== 'Skipped'
-    ? `${Math.round(Number(userProfile.goalWeight) * 0.8)}g`
+  async function handleLogout() {
+    await supabase.auth.signOut()
+    router.push('/')
+  }
+
+  const proteinTarget = userProfile?.goal_weight
+    ? `${Math.round(Number(userProfile.goal_weight) * 0.8)}g`
     : null
+
+  if (!isInitialized) {
+    return (
+      <div className="min-h-screen bg-[#FFFBF5] flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-8 h-8 border-2 border-[#2D5A3D] border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+          <p className="text-sm text-[#9B9B93]">Loading your coaching session...</p>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="flex flex-col h-screen bg-[#FFFBF5]">
@@ -126,9 +205,9 @@ export default function Chat() {
           <h1 className="text-white font-semibold text-sm leading-tight">Nova</h1>
           <p className="text-white/50 text-xs">AI Wellness Coach</p>
         </div>
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex items-center gap-3">
           {proteinTarget && (
-            <div className="bg-white/10 px-2.5 py-1 rounded-full">
+            <div className="bg-white/10 px-2.5 py-1 rounded-full hidden sm:block">
               <span className="text-white/70 text-[10px]">🎯 Protein: {proteinTarget}/day</span>
             </div>
           )}
@@ -136,6 +215,9 @@ export default function Chat() {
             <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
             <span className="text-white/40 text-xs">Online</span>
           </div>
+          <button onClick={handleLogout} className="text-white/40 hover:text-white text-xs transition-colors cursor-pointer">
+            Log out
+          </button>
         </div>
       </header>
 
@@ -178,12 +260,12 @@ export default function Chat() {
         <div ref={messagesEndRef} />
       </div>
 
-      {/* QUICK REPLIES (only show at start) */}
-      {messages.length <= 1 && (
+      {/* QUICK REPLIES */}
+      {messages.length <= 2 && (
         <div className="px-4 pb-2 flex flex-wrap gap-2">
           {[
-            ...(userProfile?.biggestChallenge && userProfile.biggestChallenge !== 'Skipped'
-              ? [`Help me with ${userProfile.biggestChallenge.toLowerCase()}`]
+            ...(userProfile?.biggest_challenge
+              ? [`Help me with ${userProfile.biggest_challenge.toLowerCase()}`]
               : ["I just started my GLP-1 — what should I know?"]),
             "Help me hit my protein goals",
             "I'm dealing with nausea",
