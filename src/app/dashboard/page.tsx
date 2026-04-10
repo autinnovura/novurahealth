@@ -31,30 +31,23 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<'overview' | 'nutrition' | 'health'>('overview')
 
-  // Modals
   const [showMedModal, setShowMedModal] = useState(false)
   const [showWeightModal, setShowWeightModal] = useState(false)
   const [showSideEffectModal, setShowSideEffectModal] = useState(false)
   const [showFoodModal, setShowFoodModal] = useState(false)
 
-  // Med form
   const [injectionSite, setInjectionSite] = useState('')
   const [medNotes, setMedNotes] = useState('')
-
-  // Weight form
   const [newWeight, setNewWeight] = useState('')
-
-  // Side effect form
   const [symptom, setSymptom] = useState('')
   const [severity, setSeverity] = useState(3)
-
-  // Food form
   const [mealType, setMealType] = useState<string>('breakfast')
   const [foodName, setFoodName] = useState('')
   const [foodCalories, setFoodCalories] = useState('')
   const [foodProtein, setFoodProtein] = useState('')
   const [foodCarbs, setFoodCarbs] = useState('')
   const [foodFat, setFoodFat] = useState('')
+  const [isCalculating, setIsCalculating] = useState(false)
 
   useEffect(() => {
     async function init() {
@@ -88,7 +81,27 @@ export default function Dashboard() {
     init()
   }, [router])
 
-  // Log functions
+  async function calculateMacros() {
+    if (!foodName.trim()) return
+    setIsCalculating(true)
+    try {
+      const res = await fetch('/api/food-lookup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ food: foodName })
+      })
+      const data = await res.json()
+      setFoodCalories(String(data.calories || 0))
+      setFoodProtein(String(data.protein || 0))
+      setFoodCarbs(String(data.carbs || 0))
+      setFoodFat(String(data.fat || 0))
+    } catch {
+      console.error('Macro calculation failed')
+    } finally {
+      setIsCalculating(false)
+    }
+  }
+
   async function logMedication() {
     if (!userId || !profile) return
     const { data } = await supabase.from('medication_logs').insert({ user_id: userId, medication: profile.medication, dose: profile.dose, injection_site: injectionSite, notes: medNotes }).select().single()
@@ -131,7 +144,6 @@ export default function Dashboard() {
     return <div className="min-h-screen bg-[#FFFBF5] flex items-center justify-center"><div className="w-8 h-8 border-2 border-[#2D5A3D] border-t-transparent rounded-full animate-spin" /></div>
   }
 
-  // Computed stats
   const daysOnMed = profile?.start_date ? Math.max(1, Math.floor((Date.now() - new Date(profile.start_date).getTime()) / 86400000)) : null
   const latestWeight = weightLogs[0]?.weight || (profile?.current_weight ? parseFloat(profile.current_weight) : null)
   const goalWeight = profile?.goal_weight ? parseFloat(profile.goal_weight) : null
@@ -145,7 +157,6 @@ export default function Dashboard() {
   const siteIndex = lastInjectionSite ? injectionSites.indexOf(lastInjectionSite) : -1
   const suggestedSite = injectionSites[(siteIndex + 1) % injectionSites.length]
 
-  // Today's nutrition totals
   const todayCalories = foodLogs.reduce((sum, f) => sum + f.calories, 0)
   const todayProtein = foodLogs.reduce((sum, f) => sum + f.protein, 0)
   const todayCarbs = foodLogs.reduce((sum, f) => sum + f.carbs, 0)
@@ -153,7 +164,6 @@ export default function Dashboard() {
   const todayWater = waterLogs.reduce((sum, w) => sum + w.amount_oz, 0)
   const waterGoal = 80
 
-  // Group food by meal type
   const meals = {
     breakfast: foodLogs.filter(f => f.meal_type === 'breakfast'),
     lunch: foodLogs.filter(f => f.meal_type === 'lunch'),
@@ -162,7 +172,7 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-[#FFFBF5] pb-20">
+    <div className="min-h-screen bg-[#FFFBF5] pb-16">
       {/* HEADER */}
       <header className="bg-[#2D5A3D] px-4 py-4">
         <div className="max-w-2xl mx-auto flex items-center justify-between">
@@ -197,7 +207,6 @@ export default function Dashboard() {
         {/* ===== OVERVIEW TAB ===== */}
         {activeTab === 'overview' && (
           <>
-            {/* Injection reminder */}
             {daysSinceInjection !== null && daysSinceInjection >= 6 && (
               <div className="bg-[#C4742B]/10 border border-[#C4742B]/20 rounded-2xl p-4 flex items-center gap-3">
                 <span className="text-2xl">💉</span>
@@ -209,7 +218,6 @@ export default function Dashboard() {
               </div>
             )}
 
-            {/* Stat cards */}
             <div className="grid grid-cols-2 gap-3">
               <div className="bg-white border border-black/[0.06] rounded-2xl p-4">
                 <p className="text-[10px] font-semibold text-[#9B9B93] uppercase tracking-wider mb-1">Weight</p>
@@ -230,7 +238,6 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* Today's summary */}
             <div className="bg-white border border-black/[0.06] rounded-2xl p-4">
               <p className="text-[10px] font-semibold text-[#9B9B93] uppercase tracking-wider mb-3">Today&apos;s Summary</p>
               <div className="grid grid-cols-4 gap-2 text-center">
@@ -252,10 +259,9 @@ export default function Dashboard() {
                   <p className="text-[10px] text-[#9B9B93]">Fat</p>
                 </div>
               </div>
-              {proteinTarget && <p className="text-[10px] text-center text-[#9B9B93] mt-2">Protein goal: {todayProtein}/{proteinTarget}g ({Math.round((todayProtein / proteinTarget) * 100)}%)</p>}
+              {proteinTarget && <p className="text-[10px] text-center text-[#9B9B93] mt-2">Protein: {todayProtein}/{proteinTarget}g ({Math.round((todayProtein / proteinTarget) * 100)}%)</p>}
             </div>
 
-            {/* Water tracker */}
             <div className="bg-white border border-black/[0.06] rounded-2xl p-4">
               <div className="flex justify-between items-center mb-3">
                 <p className="text-[10px] font-semibold text-[#9B9B93] uppercase tracking-wider">Water Intake</p>
@@ -266,14 +272,11 @@ export default function Dashboard() {
               </div>
               <div className="flex gap-2 flex-wrap">
                 {waterAmounts.map(oz => (
-                  <button key={oz} onClick={() => logWater(oz)}
-                    className="bg-[#60A5FA]/10 text-[#60A5FA] px-3 py-1.5 rounded-full text-xs font-semibold hover:bg-[#60A5FA]/20 transition-colors cursor-pointer"
-                  >+{oz} oz</button>
+                  <button key={oz} onClick={() => logWater(oz)} className="bg-[#60A5FA]/10 text-[#60A5FA] px-3 py-1.5 rounded-full text-xs font-semibold hover:bg-[#60A5FA]/20 transition-colors cursor-pointer">+{oz} oz</button>
                 ))}
               </div>
             </div>
 
-            {/* Quick actions */}
             <div className="grid grid-cols-4 gap-2">
               <button onClick={() => setShowFoodModal(true)} className="bg-[#2D5A3D] text-white rounded-2xl p-3 text-center hover:bg-[#3A7A52] transition-colors cursor-pointer">
                 <span className="text-xl block mb-0.5">🍽️</span><span className="text-[10px] font-semibold">Food</span>
@@ -289,7 +292,6 @@ export default function Dashboard() {
               </button>
             </div>
 
-            {/* Chat CTA */}
             <a href="/chat" className="block bg-[#E8F0EB] border border-[#2D5A3D]/10 rounded-2xl p-4 hover:bg-[#d4e5d9] transition-colors">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-full bg-[#2D5A3D] flex items-center justify-center shrink-0"><span className="text-lg">🌿</span></div>
@@ -306,7 +308,6 @@ export default function Dashboard() {
         {/* ===== NUTRITION TAB ===== */}
         {activeTab === 'nutrition' && (
           <>
-            {/* Daily macros summary */}
             <div className="bg-white border border-black/[0.06] rounded-2xl p-5">
               <div className="flex justify-between items-center mb-4">
                 <h2 className="text-sm font-bold text-[#1E1E1C]">Today&apos;s Nutrition</h2>
@@ -343,7 +344,6 @@ export default function Dashboard() {
               )}
             </div>
 
-            {/* Meals breakdown */}
             {(['breakfast', 'lunch', 'dinner', 'snack'] as const).map(meal => (
               <div key={meal} className="bg-white border border-black/[0.06] rounded-2xl p-4">
                 <div className="flex justify-between items-center mb-2">
@@ -353,12 +353,9 @@ export default function Dashboard() {
                   </div>
                   <div className="flex items-center gap-2">
                     {meals[meal].length > 0 && (
-                      <span className="text-xs text-[#9B9B93]">
-                        {meals[meal].reduce((s, f) => s + f.calories, 0)} cal • {meals[meal].reduce((s, f) => s + f.protein, 0)}g P
-                      </span>
+                      <span className="text-xs text-[#9B9B93]">{meals[meal].reduce((s, f) => s + f.calories, 0)} cal • {meals[meal].reduce((s, f) => s + f.protein, 0)}g P</span>
                     )}
-                    <button onClick={() => { setMealType(meal); setShowFoodModal(true) }}
-                      className="w-7 h-7 rounded-full bg-[#E8F0EB] text-[#2D5A3D] flex items-center justify-center text-lg font-bold cursor-pointer hover:bg-[#d4e5d9] transition-colors">+</button>
+                    <button onClick={() => { setMealType(meal); setShowFoodModal(true) }} className="w-7 h-7 rounded-full bg-[#E8F0EB] text-[#2D5A3D] flex items-center justify-center text-lg font-bold cursor-pointer hover:bg-[#d4e5d9] transition-colors">+</button>
                   </div>
                 </div>
                 {meals[meal].length === 0 ? (
@@ -381,7 +378,6 @@ export default function Dashboard() {
               </div>
             ))}
 
-            {/* Water */}
             <div className="bg-white border border-black/[0.06] rounded-2xl p-4">
               <div className="flex justify-between items-center mb-3">
                 <div className="flex items-center gap-2">
@@ -395,9 +391,7 @@ export default function Dashboard() {
               </div>
               <div className="flex gap-2 flex-wrap">
                 {waterAmounts.map(oz => (
-                  <button key={oz} onClick={() => logWater(oz)}
-                    className="bg-[#60A5FA]/10 text-[#60A5FA] px-3 py-1.5 rounded-full text-xs font-semibold hover:bg-[#60A5FA]/20 transition-colors cursor-pointer"
-                  >+{oz} oz</button>
+                  <button key={oz} onClick={() => logWater(oz)} className="bg-[#60A5FA]/10 text-[#60A5FA] px-3 py-1.5 rounded-full text-xs font-semibold hover:bg-[#60A5FA]/20 transition-colors cursor-pointer">+{oz} oz</button>
                 ))}
               </div>
             </div>
@@ -407,7 +401,6 @@ export default function Dashboard() {
         {/* ===== HEALTH TAB ===== */}
         {activeTab === 'health' && (
           <>
-            {/* Quick actions */}
             <div className="grid grid-cols-3 gap-3">
               <button onClick={() => setShowMedModal(true)} className="bg-[#2D5A3D] text-white rounded-2xl p-4 text-center hover:bg-[#3A7A52] transition-colors cursor-pointer">
                 <span className="text-2xl block mb-1">💉</span><span className="text-xs font-semibold">Log Injection</span>
@@ -420,7 +413,6 @@ export default function Dashboard() {
               </button>
             </div>
 
-            {/* Injection info */}
             <div className="bg-white border border-black/[0.06] rounded-2xl p-4">
               <h2 className="text-sm font-bold text-[#1E1E1C] mb-3">Injection Tracker</h2>
               <div className="grid grid-cols-2 gap-3">
@@ -437,7 +429,6 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* Weight trend */}
             {weightLogs.length > 0 && (
               <div className="bg-white border border-black/[0.06] rounded-2xl p-4">
                 <h2 className="text-sm font-bold text-[#1E1E1C] mb-3">Weight History</h2>
@@ -468,7 +459,6 @@ export default function Dashboard() {
               </div>
             )}
 
-            {/* Recent side effects */}
             {sideEffectLogs.length > 0 && (
               <div className="bg-white border border-black/[0.06] rounded-2xl p-4">
                 <h2 className="text-sm font-bold text-[#1E1E1C] mb-3">Recent Side Effects</h2>
@@ -489,9 +479,7 @@ export default function Dashboard() {
         )}
       </div>
 
-      {/* ===== MODALS ===== */}
-
-      {/* Food Modal */}
+      {/* ===== FOOD MODAL WITH AUTO MACRO CALCULATOR ===== */}
       {showFoodModal && (
         <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50 px-4 pb-4">
           <div className="bg-white rounded-2xl w-full max-w-sm p-6 space-y-4 max-h-[85vh] overflow-y-auto">
@@ -509,8 +497,22 @@ export default function Dashboard() {
                 ))}
               </div>
             </div>
-            <input type="text" value={foodName} onChange={(e) => setFoodName(e.target.value)} placeholder="What did you eat?" autoFocus
-              className="w-full px-4 py-3 rounded-xl border border-black/10 bg-white text-sm text-[#1E1E1C] outline-none focus:border-[#2D5A3D] placeholder:text-[#9B9B93]" />
+
+            {/* FOOD NAME + CALCULATE BUTTON */}
+            <div>
+              <p className="text-xs font-medium text-[#6B6B65] mb-2">What did you eat?</p>
+              <div className="flex gap-2">
+                <input type="text" value={foodName} onChange={(e) => setFoodName(e.target.value)} placeholder="e.g. 8 oz ribeye steak"
+                  className="flex-1 px-4 py-3 rounded-xl border border-black/10 bg-white text-sm text-[#1E1E1C] outline-none focus:border-[#2D5A3D] placeholder:text-[#9B9B93]" />
+                <button type="button" onClick={calculateMacros} disabled={!foodName.trim() || isCalculating}
+                  className="bg-[#2D5A3D] text-white px-3 py-3 rounded-xl text-xs font-semibold hover:bg-[#3A7A52] transition-colors cursor-pointer whitespace-nowrap disabled:opacity-50">
+                  {isCalculating ? '...' : '⚡ Calc'}
+                </button>
+              </div>
+              <p className="text-[10px] text-[#9B9B93] mt-1">Type a food with quantity and tap Calc to auto-fill macros</p>
+            </div>
+
+            {/* MACRO INPUTS */}
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="text-[10px] font-medium text-[#9B9B93] uppercase">Calories</label>
@@ -540,7 +542,7 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Medication Modal */}
+      {/* MEDICATION MODAL */}
       {showMedModal && (
         <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50 px-4 pb-4">
           <div className="bg-white rounded-2xl w-full max-w-sm p-6 space-y-4">
@@ -569,7 +571,7 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Weight Modal */}
+      {/* WEIGHT MODAL */}
       {showWeightModal && (
         <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50 px-4 pb-4">
           <div className="bg-white rounded-2xl w-full max-w-sm p-6 space-y-4">
@@ -589,7 +591,7 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Side Effect Modal */}
+      {/* SIDE EFFECT MODAL */}
       {showSideEffectModal && (
         <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50 px-4 pb-4">
           <div className="bg-white rounded-2xl w-full max-w-sm p-6 space-y-4">
@@ -621,6 +623,7 @@ export default function Dashboard() {
           </div>
         </div>
       )}
+
       {/* BOTTOM NAV */}
       <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-black/5 px-4 py-2 flex justify-around z-50">
         <a href="/dashboard" className="flex flex-col items-center gap-0.5 text-[#2D5A3D]">
@@ -639,4 +642,3 @@ export default function Dashboard() {
     </div>
   )
 }
-
