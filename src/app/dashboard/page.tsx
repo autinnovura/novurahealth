@@ -68,22 +68,35 @@ function WeightGraph({ data, goalWeight }: { data: WeightLog[]; goalWeight: numb
 // ── Streak Calendar ────────────────────────────────────
 function StreakCalendar({ foodLogs }: { foodLogs: FoodLog[] }) {
   const today = new Date()
-  const days: { date: Date; hasData: boolean }[] = []
-  for (let i = 27; i >= 0; i--) {
-    const d = addDays(today, -i)
-    const dateStr = d.toISOString().split('T')[0]
-    days.push({ date: d, hasData: foodLogs.some(f => f.logged_at.startsWith(dateStr)) })
-  }
+  const year = today.getFullYear()
+  const month = today.getMonth()
+  const firstDay = new Date(year, month, 1).getDay()
+  const daysInMonth = new Date(year, month + 1, 0).getDate()
+  const logDates = new Set(foodLogs.map(f => f.logged_at.split('T')[0]))
+
   return (
-    <div className="grid grid-cols-7 gap-1">
-      {['S','M','T','W','T','F','S'].map((d,i) => <div key={i} className="text-center text-[8px] text-[#B0B0A8] font-medium">{d}</div>)}
-      {days.map((d, i) => (
-        <div key={i} className={`aspect-square rounded-sm flex items-center justify-center text-[8px] font-medium ${
-          d.hasData ? 'bg-[#2D5A3D] text-white' : isToday(d.date) ? 'bg-[#E8F0EB] text-[#2D5A3D] border border-[#2D5A3D]/30' : 'bg-[#F5F5F2] text-[#C5C5BE]'
-        }`}>
-          {d.date.getDate()}
-        </div>
-      ))}
+    <div className="max-w-[280px] mx-auto">
+      <p className="text-xs font-semibold text-[#6B6B65] text-center mb-2">{today.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</p>
+      <div className="grid grid-cols-7 gap-1.5">
+        {['S','M','T','W','T','F','S'].map((d,i) => <div key={i} className="text-center text-[10px] text-[#B0B0A8] font-medium">{d}</div>)}
+        {Array.from({ length: firstDay }, (_, i) => <div key={`pad-${i}`} />)}
+        {Array.from({ length: daysInMonth }, (_, i) => {
+          const day = i + 1
+          const date = new Date(year, month, day)
+          const dateStr = date.toISOString().split('T')[0]
+          const hasData = logDates.has(dateStr)
+          const isTodayDate = day === today.getDate()
+          const isFuture = date > today
+          return (
+            <div key={day} className={`w-8 h-8 rounded-md flex items-center justify-center text-[10px] font-medium ${
+              isFuture ? 'text-[#E0E0DC]' :
+              hasData ? 'bg-[#2D5A3D] text-white' :
+              isTodayDate ? 'bg-[#E8F0EB] text-[#2D5A3D] border border-[#2D5A3D]/30' :
+              'bg-[#F5F5F2] text-[#C5C5BE]'
+            }`}>{day}</div>
+          )
+        })}
+      </div>
     </div>
   )
 }
@@ -451,7 +464,7 @@ export default function Dashboard() {
 
           {/* Streak calendar */}
           <div className="bg-white border border-[#EDEDEA] rounded-xl p-4">
-            <p className="text-[10px] font-semibold text-[#B0B0A8] uppercase tracking-wider mb-3">Logging Streak · Last 28 Days</p>
+            <p className="text-[10px] font-semibold text-[#B0B0A8] uppercase tracking-wider mb-3">Logging Streak · {new Date().toLocaleDateString('en-US', { month: 'long' })}</p>
             <StreakCalendar foodLogs={allFoodLogs} />
           </div>
 
