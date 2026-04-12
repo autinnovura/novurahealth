@@ -1,11 +1,26 @@
-import { Resend } from 'resend'
-
-const resend = new Resend(process.env.RESEND_API_KEY!)
-
 const FROM_EMAIL = 'NovuraHealth <hello@novurahealth.com>'
 
+async function sendEmail(params: { from: string; to: string; subject: string; html: string }) {
+  const res = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+    },
+    body: JSON.stringify(params),
+  })
+
+  if (!res.ok) {
+    const body = await res.json()
+    return { data: null, error: { message: body.message ?? 'Failed to send email' } }
+  }
+
+  const data = await res.json()
+  return { data, error: null }
+}
+
 export async function sendWelcomeEmail(email: string, name: string) {
-  return resend.emails.send({
+  return sendEmail({
     from: FROM_EMAIL,
     to: email,
     subject: `Welcome to NovuraHealth, ${name}!`,
@@ -52,7 +67,7 @@ export async function sendWeeklyDigest(
 ) {
   const { currentWeight, weightChange, logsThisWeek, streak } = stats
 
-  return resend.emails.send({
+  return sendEmail({
     from: FROM_EMAIL,
     to: email,
     subject: `${name}, here's your weekly progress`,
