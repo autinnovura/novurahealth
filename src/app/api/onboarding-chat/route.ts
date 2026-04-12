@@ -3,45 +3,31 @@ import { NextRequest, NextResponse } from 'next/server'
 export async function POST(req: NextRequest) {
   const { step, data } = await req.json()
 
-  const systemPrompt = `You are Nova, the warm and knowledgeable AI health coach for NovuraHealth — a GLP-1 medication companion app. You're onboarding a new user through a conversational intake.
+  const systemPrompt = `You are Nova, the AI health coach for NovuraHealth. You're onboarding a new user.
 
-Your personality: warm, encouraging, knowledgeable about GLP-1 medications, casual but professional. You use short sentences. You're like a supportive friend who happens to know a lot about weight management.
-
-RULES:
-- Keep responses to 1-3 short sentences MAX
-- Be genuinely encouraging, not generic
-- Reference what the user just told you specifically
-- Transition naturally to what you'll ask next
-- Never use emojis excessively (1 max per response)
-- Don't be clinical or robotic
-- Sound like a real person texting, not a corporate chatbot`
+CRITICAL RULES:
+- MAX 1 sentence acknowledging what they said
+- MAX 1 sentence transitioning to the next question
+- NEVER more than 2 sentences total
+- Be warm but FAST — like a quick text, not a paragraph
+- No filler words, no fluff, no "that's wonderful" or "absolutely"
+- 1 emoji max per response, only if natural`
 
   const prompts: Record<string, string> = {
-    welcome: `The user just signed up for NovuraHealth. Give a warm 2-sentence welcome. Introduce yourself as Nova. Say you'll help them get set up in about 60 seconds and that you'll be their coach throughout their journey.`,
-    
-    name: `The user just told you their name is "${data}". Acknowledge it warmly (use their name), and say you'd love to know which GLP-1 medication they're on so you can personalize their experience.`,
-    
-    medication: `The user is taking ${data}. Acknowledge their medication choice with something brief and relevant (you can mention one quick fact about it). Then say let's get their dose dialed in.`,
-    
-    dose: `The user's dose is ${data}. Acknowledge it briefly. Then ask when they started their medication (or if they're just getting started).`,
-    
-    start_date: `The user ${data === 'just_starting' ? 'is just getting started' : `started on ${data}`}. ${data === 'just_starting' ? "Welcome them to the beginning of their journey — it's exciting." : "Acknowledge how far they've come."} Then say let's set up their weight tracking.`,
-    
-    current_weight: `The user's current weight is ${data} lbs. Acknowledge it matter-of-factly (don't comment on the number itself — be sensitive). Ask what their goal weight is.`,
-    
-    goal_weight: `The user's current weight was mentioned before and their goal weight is ${data} lbs. Don't calculate or comment on the specific gap. Just say that's a solid target and you'll help them track progress. Ask what their main goal is with GLP-1 treatment.`,
-    
-    primary_goal: `The user's primary goal is: "${data}". Affirm this goal genuinely. Then ask what their biggest challenge has been so far (or what they're most worried about if they're new).`,
-    
-    biggest_challenge: `The user's biggest challenge is: "${data}". Show empathy and briefly reassure them — that's exactly what you're here to help with. Ask about their current exercise/activity level.`,
-    
-    exercise_level: `The user's exercise level is: "${data}". Acknowledge it without judgment. Then say "Alright, I've got everything I need!" and that you're excited to be their coach. Say their dashboard is ready.`,
+    welcome: `Welcome a new user in exactly 2 short sentences. Introduce yourself as Nova and say this takes 60 seconds.`,
+    name: `User's name is "${data}". Greet them by name (1 sentence) and ask which GLP-1 med they're on (1 sentence).`,
+    medication: `User takes ${data}. Acknowledge briefly and ask their current dose.`,
+    dose: `User's dose is ${data}. Got it. Ask when they started (or if they're just beginning).`,
+    start_date: `User ${data === 'just_starting' ? 'is just starting' : `started ${data}`}. One quick acknowledgment. Ask current weight.`,
+    current_weight: `User weighs ${data}. Don't comment on the number. Ask goal weight.`,
+    goal_weight: `Goal weight is ${data}. Say solid goal. Ask their main reason for taking GLP-1.`,
+    primary_goal: `Goal is "${data}". Quick affirmation. Ask biggest challenge so far.`,
+    biggest_challenge: `Challenge is "${data}". Brief empathy. Ask activity level.`,
+    exercise_level: `Activity: "${data}". Say "All set! Your dashboard is ready." Keep it to 1-2 sentences max.`,
   }
 
   const userPrompt = prompts[step]
-  if (!userPrompt) {
-    return NextResponse.json({ message: "Let's get you set up!" })
-  }
+  if (!userPrompt) return NextResponse.json({ message: "Let's get you set up!" })
 
   try {
     const res = await fetch('https://api.anthropic.com/v1/messages', {
@@ -53,28 +39,25 @@ RULES:
       },
       body: JSON.stringify({
         model: 'claude-sonnet-4-20250514',
-        max_tokens: 150,
+        max_tokens: 80,
         system: systemPrompt,
         messages: [{ role: 'user', content: userPrompt }],
       }),
     })
-
     const result = await res.json()
-    const message = result.content?.[0]?.text || "Let's keep going!"
-    return NextResponse.json({ message })
+    return NextResponse.json({ message: result.content?.[0]?.text || "Let's keep going!" })
   } catch {
-    // Fallback responses if API fails
     const fallbacks: Record<string, string> = {
-      welcome: "Hey there! I'm Nova, your GLP-1 coach. Let's get you set up — this'll take about 60 seconds.",
-      name: `Great to meet you, ${data}! Which GLP-1 medication are you on?`,
-      medication: `Got it — ${data}. Let's get your dose set up.`,
-      dose: `${data}, noted. When did you start your medication?`,
-      start_date: "Perfect. Let's set up your weight tracking.",
-      current_weight: "Got it. What's your goal weight?",
-      goal_weight: "Solid target. What's your main goal with GLP-1 treatment?",
-      primary_goal: "Love that. What's been your biggest challenge so far?",
-      biggest_challenge: "That's exactly what I'm here to help with. How active are you currently?",
-      exercise_level: "Alright, I've got everything I need! Your dashboard is ready. Let's do this.",
+      welcome: "Hey! I'm Nova, your GLP-1 coach. Let's get you set up — 60 seconds.",
+      name: `Hey ${data}! Which GLP-1 are you on?`,
+      medication: `${data}, got it. What dose are you on?`,
+      dose: `${data}, noted. When did you start?`,
+      start_date: "Got it. What's your current weight?",
+      current_weight: "Logged. What's your goal weight?",
+      goal_weight: "Solid target. What's your main goal with GLP-1?",
+      primary_goal: "Makes sense. What's been your biggest challenge?",
+      biggest_challenge: "That's what I'm here for. How active are you?",
+      exercise_level: "All set! Your dashboard is ready 🌿",
     }
     return NextResponse.json({ message: fallbacks[step] || "Let's keep going!" })
   }
