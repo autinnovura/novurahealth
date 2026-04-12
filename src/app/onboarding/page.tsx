@@ -109,6 +109,16 @@ export default function Onboarding() {
       exercise_level: '',
       biggest_challenge: '',
     })
+
+    const { data: { user } } = await supabase.auth.getUser()
+    if (user?.email) {
+      fetch('/api/send-welcome', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: user.email, name }),
+      }).catch(() => {})
+    }
+
     setSaving(false)
     router.push('/dashboard')
   }
