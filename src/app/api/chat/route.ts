@@ -1,230 +1,255 @@
 import { NextRequest, NextResponse } from 'next/server'
-import Anthropic from '@anthropic-ai/sdk'
+import { createClient } from '@supabase/supabase-js'
 
-const client = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY!,
-})
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL || '',
+  process.env.SUPABASE_SERVICE_ROLE_KEY || ''
+)
 
-const SYSTEM_PROMPT = `You are Nova, the AI wellness coach for NovuraHealth. You help people on GLP-1 medications navigate their wellness journey with personalized coaching, education, and support.
+async function getUserContext(userId: string) {
+  const now = new Date()
+  const today = new Date(now); today.setHours(0, 0, 0, 0)
+  const weekAgo = new Date(now.getTime() - 7 * 86400000)
+  const monthAgo = new Date(now.getTime() - 30 * 86400000)
 
-## WHO YOU ARE
+  const [
+    profile, weights, recentFood, todayFood, todayWater,
+    weekWater, meds, sideEffects, checkins, exercises,
+    taperPlan, taperCheckins
+  ] = await Promise.all([
+    supabaseAdmin.from('profiles').select('*').eq('id', userId).single(),
+    supabaseAdmin.from('weight_logs').select('weight, logged_at').eq('user_id', userId).order('logged_at', { ascending: false }).limit(14),
+    supabaseAdmin.from('food_logs').select('meal_type, food_name, calories, protein, carbs, fat, logged_at').eq('user_id', userId).gte('logged_at', weekAgo.toISOString()).order('logged_at', { ascending: false }),
+    supabaseAdmin.from('food_logs').select('meal_type, food_name, calories, protein, carbs, fat').eq('user_id', userId).gte('logged_at', today.toISOString()),
+    supabaseAdmin.from('water_logs').select('amount_oz').eq('user_id', userId).gte('logged_at', today.toISOString()),
+    supabaseAdmin.from('water_logs').select('amount_oz, logged_at').eq('user_id', userId).gte('logged_at', weekAgo.toISOString()),
+    supabaseAdmin.from('medication_logs').select('medication, dose, injection_site, logged_at').eq('user_id', userId).order('logged_at', { ascending: false }).limit(8),
+    supabaseAdmin.from('side_effect_logs').select('symptom, severity, logged_at').eq('user_id', userId).order('logged_at', { ascending: false }).limit(10),
+    supabaseAdmin.from('checkin_logs').select('mood, energy, notes, logged_at').eq('user_id', userId).order('logged_at', { ascending: false }).limit(7),
+    supabaseAdmin.from('exercise_logs').select('exercise_type, duration_minutes, logged_at').eq('user_id', userId).order('logged_at', { ascending: false }).limit(10),
+    supabaseAdmin.from('tapering_plans').select('*').eq('user_id', userId).single(),
+    supabaseAdmin.from('tapering_checkins').select('*').eq('user_id', userId).order('logged_at', { ascending: false }).limit(5),
+  ])
 
-You are warm, knowledgeable, and encouraging — like a supportive friend who happens to know a lot about GLP-1 medications, nutrition, exercise, and behavior change. You speak in a conversational, approachable tone. You use simple language, not medical jargon. You celebrate small wins. You never lecture or make people feel guilty.
+  const p = profile.data
+  if (!p) return null
 
-You are NOT a doctor, nurse, pharmacist, or medical professional. You are a wellness coach.
+  // ── Compute derived insights ──────────────────────
+  const weightData = weights.data || []
+  const latestWeight = weightData[0]?.weight || null
+  const startWeight = p.current_weight ? parseFloat(p.current_weight) : null
+  const goalWeight = p.goal_weight ? parseFloat(p.goal_weight) : null
+  const totalLost = startWeight && latestWeight ? Math.round((startWeight - latestWeight) * 10) / 10 : null
+  const toGoal = goalWeight && latestWeight ? Math.round((latestWeight - goalWeight) * 10) / 10 : null
+  const proteinTarget = goalWeight ? Math.round(goalWeight * 0.8) : null
 
-## HARD RULES — YOU NEVER BREAK THESE
+  // Weight trend (last 7 entries)
+  let weightTrend = 'stable'
+  if (weightData.length >= 3) {
+    const recent = weightData.slice(0, 3).map(w => w.weight)
+    const older = weightData.slice(-3).map(w => w.weight)
+    const recentAvg = recent.reduce((a: number, b: number) => a + b, 0) / recent.length
+    const olderAvg = older.reduce((a: number, b: number) => a + b, 0) / older.length
+    if (recentAvg < olderAvg - 1) weightTrend = 'losing'
+    else if (recentAvg > olderAvg + 1) weightTrend = 'gaining'
+  }
 
-1. NEVER prescribe, diagnose, or recommend specific medications. If asked, say: "That's a great question for your prescriber — they know your full medical history and can give you the best guidance."
-2. NEVER provide specific medical advice. If someone describes serious symptoms (chest pain, severe allergic reaction, pancreatitis symptoms, severe depression, suicidal thoughts), tell them to contact their doctor or call 911 immediately.
-3. NEVER claim to be a medical professional.
-4. ALWAYS defer to the prescriber for anything medication-related.
-5. NEVER guarantee results or promise specific weight loss numbers.
-6. NEVER encourage disordered eating.
-7. NEVER disparage any medication, treatment approach, or healthcare provider.
+  // Today's nutrition
+  const todayFoodData = todayFood.data || []
+  const todayCal = todayFoodData.reduce((s, f) => s + (f.calories || 0), 0)
+  const todayP = todayFoodData.reduce((s, f) => s + (f.protein || 0), 0)
+  const todayC = todayFoodData.reduce((s, f) => s + (f.carbs || 0), 0)
+  const todayF = todayFoodData.reduce((s, f) => s + (f.fat || 0), 0)
+  const todayWaterOz = (todayWater.data || []).reduce((s, w) => s + w.amount_oz, 0)
 
-## GLP-1 MEDICATION KNOWLEDGE
+  // Weekly averages
+  const weekFoodData = recentFood.data || []
+  const foodDays = new Set(weekFoodData.map(f => f.logged_at.split('T')[0])).size || 1
+  const weekAvgCal = Math.round(weekFoodData.reduce((s, f) => s + (f.calories || 0), 0) / foodDays)
+  const weekAvgP = Math.round(weekFoodData.reduce((s, f) => s + (f.protein || 0), 0) / foodDays)
+  const weekWaterData = weekWater.data || []
+  const waterDays = new Set(weekWaterData.map(w => w.logged_at.split('T')[0])).size || 1
+  const weekAvgWater = Math.round(weekWaterData.reduce((s, w) => s + w.amount_oz, 0) / waterDays)
 
-### How GLP-1s Work
-GLP-1 receptor agonists mimic the natural hormone GLP-1: (1) slow gastric emptying, (2) reduce appetite via brain centers, (3) improve insulin sensitivity.
+  // Protein hit rate
+  const dailyProtein: Record<string, number> = {}
+  weekFoodData.forEach(f => {
+    const day = f.logged_at.split('T')[0]
+    dailyProtein[day] = (dailyProtein[day] || 0) + (f.protein || 0)
+  })
+  const proteinHitDays = proteinTarget ? Object.values(dailyProtein).filter(p => p >= proteinTarget).length : 0
 
-### Medications
-- Semaglutide: Ozempic (diabetes), Wegovy (weight, up to 2.4mg), Rybelsus (oral, empty stomach)
-- Tirzepatide: Mounjaro (diabetes), Zepbound (weight). Dual GIP/GLP-1, slightly greater average weight loss
-- Orforglipron: Foundayo (oral, non-peptide, newer, lower price point)
+  // Common foods
+  const foodCounts: Record<string, number> = {}
+  weekFoodData.forEach(f => { foodCounts[f.food_name] = (foodCounts[f.food_name] || 0) + 1 })
+  const topFoods = Object.entries(foodCounts).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([name, count]) => `${name} (${count}x)`)
 
-### Common Side Effects & Management
-- Nausea: Small protein-rich meals, avoid high-fat around injection, ginger tea, inject before bed, usually improves 2-4 weeks
-- Constipation: 80+ oz water, high-fiber gradually, magnesium citrate, regular movement
-- Sulfur burps: Avoid carbonated drinks, eat slowly, reduce high-sulfur foods temporarily
-- Fatigue: Usually from not eating enough protein/calories — fix nutrition first
-- Hair thinning: Related to rapid weight loss, ensure adequate protein/biotin/iron/zinc, usually temporary
-- SERIOUS (refer to doctor): Severe abdominal pain, vision changes, thyroid symptoms, severe allergic reaction, severe depression
+  // Side effect patterns
+  const symptomCounts: Record<string, number> = {}
+  const sideEffectData = sideEffects.data || []
+  sideEffectData.forEach(s => { symptomCounts[s.symptom] = (symptomCounts[s.symptom] || 0) + 1 })
+  const topSymptoms = Object.entries(symptomCounts).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([s, c]) => `${s} (${c}x)`)
 
-## NUTRITION KNOWLEDGE
+  // Mood/energy averages
+  const checkinData = checkins.data || []
+  const avgMood = checkinData.length > 0 ? Math.round(checkinData.reduce((s, c) => s + c.mood, 0) / checkinData.length * 10) / 10 : null
+  const avgEnergy = checkinData.length > 0 ? Math.round(checkinData.reduce((s, c) => s + c.energy, 0) / checkinData.length * 10) / 10 : null
+  const latestMood = checkinData[0] || null
 
-### Protein Requirements
-- Target: 0.7-1.0g per pound of GOAL body weight
-- Minimum: Never below 60g/day
-- Without adequate protein, 25-40% of weight lost can be muscle mass
+  // Injection tracking
+  const medData = meds.data || []
+  const lastInjection = medData[0] || null
+  const daysSinceInjection = lastInjection ? Math.floor((now.getTime() - new Date(lastInjection.logged_at).getTime()) / 86400000) : null
+  const daysUntilInjection = daysSinceInjection !== null ? Math.max(0, 7 - daysSinceInjection) : null
 
-### Protein Quick Reference
-Greek yogurt 15-17g/cup, cottage cheese 25g/cup, eggs 6g each, chicken breast 26g/4oz, ground turkey 22g/4oz, salmon 25g/4oz, tuna 20g/can, protein shake 25-30g/scoop, string cheese 7g each, beef jerky 10g/oz, edamame 17g/cup, lentils 18g/cup cooked, Fairlife milk 13g/cup
+  // Exercise this week
+  const exerciseData = exercises.data || []
+  const weekExercises = exerciseData.filter(e => new Date(e.logged_at) >= weekAgo)
 
-### Meal Strategies
-- PROTEIN FIRST: Always eat protein before carbs and vegetables
-- Front-load calories early in the day when appetite is better
-- "I'm not hungry" protocol: Protein shake → Greek yogurt → broth-based soup → smoothie with protein
-- Never eat zero. Even 800 calories of protein-rich food beats skipping entirely
+  // Days on medication
+  const daysOnMed = p.start_date ? Math.max(1, Math.floor((now.getTime() - new Date(p.start_date).getTime()) / 86400000)) : null
 
-## EXERCISE KNOWLEDGE
-- Resistance training 2-3x/week is non-negotiable for muscle preservation
-- Start with bodyweight: squats, push-ups, lunges, planks
-- Walking 7,000-10,000 steps/day supports weight loss, mood, digestion
-- Exercise 3-5 days after injection when side effects are lowest
+  // Tapering context
+  const tp = taperPlan.data
+  const tc = taperCheckins.data || []
 
-## TRANSITION KNOWLEDGE
-- Most people regain ~2/3 of weight within 12 months of stopping
-- Build habits WHILE medication makes it easy, not after stopping
-- Key habits before considering transition: consistent protein, resistance training 3+ months, hydration, sleep, stress management, meal prep routine
-- Gradual dose reduction better than abrupt stop (discuss with prescriber)
+  return `
+═══ USER PROFILE ═══
+Name: ${p.name}
+Medication: ${p.medication} at ${p.dose}
+Injection frequency: ${p.injection_frequency || 'weekly'}
+Days on medication: ${daysOnMed || 'unknown'}
+Start weight: ${startWeight || 'unknown'} lbs
+Current weight: ${latestWeight || 'unknown'} lbs
+Goal weight: ${goalWeight || 'unknown'} lbs
+Total lost: ${totalLost !== null ? `${totalLost} lbs` : 'unknown'}
+Remaining to goal: ${toGoal !== null ? `${toGoal} lbs` : 'unknown'}
+Weight trend (2 weeks): ${weightTrend}
+Protein target: ${proteinTarget || 'unknown'}g/day
 
-## INSURANCE KNOWLEDGE
-- Manufacturer savings: NovoCare (Wegovy/Ozempic), LillyDirect/LillyCares (Zepbound/Mounjaro/Foundayo)
-- FSA/HSA typically cover GLP-1s
-- Prior auth common, 1-3 weeks, first denial is normal — appeals often succeed
+═══ TODAY (${now.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}) ═══
+Meals logged: ${todayFoodData.length} items
+${todayFoodData.length > 0 ? `Foods: ${todayFoodData.map(f => `${f.food_name} (${f.calories}cal, ${f.protein}gP)`).join(', ')}` : 'No food logged yet'}
+Calories: ${todayCal} | Protein: ${todayP}g${proteinTarget ? `/${proteinTarget}g (${Math.round(todayP / proteinTarget * 100)}%)` : ''} | Carbs: ${todayC}g | Fat: ${todayF}g
+Water: ${todayWaterOz}/80 oz (${Math.round(todayWaterOz / 80 * 100)}%)
+${proteinTarget && todayP < proteinTarget ? `Protein remaining today: ${proteinTarget - todayP}g` : ''}
 
-## HOW TO USE THE USER'S DATA
+═══ WEEKLY AVERAGES ═══
+Avg daily calories: ${weekAvgCal}
+Avg daily protein: ${weekAvgP}g${proteinTarget ? ` (target: ${proteinTarget}g)` : ''}
+Protein target hit: ${proteinHitDays}/${foodDays} days
+Avg daily water: ${weekAvgWater}oz
+Workouts this week: ${weekExercises.length}${weekExercises.length > 0 ? ` — ${weekExercises.map(e => `${e.exercise_type} ${e.duration_minutes}min`).join(', ')}` : ''}
 
-You have access to the user's profile and recent tracking data. USE IT PROACTIVELY:
+═══ COMMON FOODS THIS WEEK ═══
+${topFoods.length > 0 ? topFoods.join(', ') : 'Not enough data yet'}
 
-- If their daily protein is below target, mention it and suggest specific foods to close the gap
-- If they haven't logged an injection in 7+ days, gently ask if they've taken their dose
-- If their weight trend shows a plateau, normalize it and suggest adjustments
-- If they logged side effects, ask how they're managing and offer tips
-- If their water intake is low, remind them hydration affects side effects
-- If they haven't logged food today, encourage them to track
-- Reference specific numbers from their data — "I see you had 45g of protein so far today" builds trust
-- Calculate how much protein they still need and suggest specific foods to hit the target
-- Notice patterns in their side effects relative to injection timing
+═══ WEIGHT HISTORY (last 14 entries) ═══
+${weightData.length > 0 ? weightData.map(w => `${new Date(w.logged_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}: ${w.weight} lbs`).join(' | ') : 'No weight entries yet'}
 
-Be specific, not generic. Use their actual data to coach them.
+═══ INJECTION HISTORY ═══
+Last injection: ${lastInjection ? `${lastInjection.injection_site} on ${new Date(lastInjection.logged_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} (${daysSinceInjection}d ago)` : 'None logged'}
+Next injection: ${daysUntilInjection !== null ? daysUntilInjection === 0 ? 'TODAY' : `in ${daysUntilInjection} days` : 'unknown'}
+Recent sites: ${medData.slice(0, 4).map(m => m.injection_site).filter(Boolean).join(' → ') || 'none'}
 
-## YOUR PERSONALITY
+═══ SIDE EFFECTS ═══
+${topSymptoms.length > 0 ? `Most common: ${topSymptoms.join(', ')}` : 'None reported'}
+${sideEffectData.length > 0 ? `Recent: ${sideEffectData.slice(0, 3).map(s => `${s.symptom} (${s.severity}/5) on ${new Date(s.logged_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`).join(', ')}` : ''}
 
-- Warm, casual, encouraging — use contractions, first person
-- Celebrate wins enthusiastically
-- Lead with empathy before advice
-- Keep responses concise — 2-4 paragraphs max unless asked for detail
-- Ask follow-up questions to personalize
-- Use emoji sparingly — max one or two per message
-- Be honest about what you don't know
-- Give actionable advice with specific numbers — "Try adding 30g at dinner with a chicken breast" not "eat more protein"
+═══ MOOD & ENERGY ═══
+${avgMood !== null ? `Avg mood: ${avgMood}/5 | Avg energy: ${avgEnergy}/5` : 'No check-ins yet'}
+${latestMood ? `Latest: mood ${latestMood.mood}/5, energy ${latestMood.energy}/5${latestMood.notes ? ` — "${latestMood.notes}"` : ''}` : ''}
 
-## USER CONTEXT
+═══ EXERCISE (last 10) ═══
+${exerciseData.length > 0 ? exerciseData.map(e => `${e.exercise_type} ${e.duration_minutes}min (${new Date(e.logged_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })})`).join(', ') : 'No exercise logged'}
 
-{USER_CONTEXT}`
-
-// Rate limiting
-const chatRateLimitMap = new Map<string, { count: number; resetTime: number }>()
-function isChatRateLimited(ip: string): boolean {
-  const now = Date.now()
-  const entry = chatRateLimitMap.get(ip)
-  if (!entry || now > entry.resetTime) { chatRateLimitMap.set(ip, { count: 1, resetTime: now + 60000 }); return false }
-  if (entry.count >= 10) return true
-  entry.count++; return false
+═══ TAPERING STATUS ═══
+${tp ? `Phase: ${tp.phase} | Readiness: ${tp.readiness_score ?? 'not assessed'}% | Stability streak: ${tp.stability_streak_days} days` : 'Not exploring tapering yet'}
+${tc.length > 0 ? `Latest tapering check-in: hunger ${tc[0].hunger}/5, cravings ${tc[0].cravings}/5, confidence ${tc[0].confidence}/5` : ''}
+`.trim()
 }
 
-export async function POST(request: NextRequest) {
+export async function POST(req: NextRequest) {
+  const { messages, userId } = await req.json()
+  if (!userId || !messages?.length) {
+    return NextResponse.json({ error: 'Missing data' }, { status: 400 })
+  }
+
+  // Pull all user context
+  const context = await getUserContext(userId)
+  if (!context) {
+    return NextResponse.json({ error: 'User not found' }, { status: 404 })
+  }
+
+  const systemPrompt = `You are Nova, the AI health coach inside NovuraHealth — a GLP-1 medication companion app. You have deep access to the user's personal health data and use it proactively to give highly specific, actionable coaching.
+
+${context}
+
+═══ YOUR COACHING APPROACH ═══
+
+1. DATA-DRIVEN: Always reference their actual numbers. Don't say "try to eat more protein" — say "You're at 42g protein today, ${context.includes('Protein remaining') ? 'need about 50g more' : 'keep pushing'}. A chicken breast would get you to 70g."
+
+2. PATTERN RECOGNITION: Spot trends they might miss.
+   - "Your nausea entries spike on injection days — try injecting at night instead of morning"
+   - "You've averaged 1,400 cal this week vs 1,800 last week — appetite suppression is kicking in, but watch your protein"
+   - "You've skipped exercise the last 4 days — even a 15-min walk helps"
+
+3. PROACTIVE ALERTS (mention these naturally when relevant):
+   - If protein is under 50% of target: flag it
+   - If water is under 40oz today: nudge them
+   - If weight is trending up for 5+ days: address it directly
+   - If injection is due today/tomorrow: remind them
+   - If they haven't logged food today: ask about it
+   - If mood/energy is declining over 3+ check-ins: check in on them
+
+4. PERSONALIZED SUGGESTIONS:
+   - Base meal suggestions on foods they ACTUALLY eat (reference their common foods)
+   - Adjust advice based on their specific medication and dose
+   - Factor in their exercise habits and level
+   - Consider their reported side effects when suggesting foods
+
+5. TONE: 
+   - Warm, direct, concise — like a knowledgeable friend texting
+   - 2-4 sentences typically, more if they ask for detail
+   - Use their name sometimes but not every message
+   - Celebrate wins with specifics: "That's 3 days straight hitting protein — that consistency matters"
+   - Be honest about setbacks without being preachy
+
+6. CLINICAL KNOWLEDGE:
+   - GLP-1 medications: mechanisms, side effects, interactions, tapering
+   - Protein: 0.8g per lb of goal weight is the target
+   - Water: 80oz/day minimum, more important on GLP-1s due to GI effects
+   - Common side effects and evidence-based management strategies
+   - Never diagnose or prescribe — always defer to their doctor for medical decisions
+   - When discussing side effects, suggest management strategies AND recommend discussing with provider if severe
+
+7. WHAT NOT TO DO:
+   - Never give a generic response when you have their data
+   - Never say "I don't have access to your data" — you do
+   - Never be preachy or lecture-y about healthy habits
+   - Don't repeat the same advice — vary your suggestions
+   - Don't over-celebrate trivial things`
+
   try {
-    const ip = request.headers.get('x-forwarded-for')?.split(',')[0] || 'unknown'
-    if (isChatRateLimited(ip)) {
-      return NextResponse.json({ error: "You're sending messages too quickly." }, { status: 429 })
-    }
-
-    const body = await request.json().catch(() => null)
-    if (!body || !body.messages || !Array.isArray(body.messages)) {
-      return NextResponse.json({ error: 'Invalid request.' }, { status: 400 })
-    }
-
-    // Build comprehensive user context
-    let userContext = 'No user data available. Ask about their medication and goals.'
-
-    if (body.userProfile || body.userLogs) {
-      const parts: string[] = []
-
-      // Profile
-      if (body.userProfile) {
-        const p = body.userProfile
-        if (p.name) parts.push(`Name: ${p.name}`)
-        if (p.medication) parts.push(`Medication: ${p.medication}`)
-        if (p.dose) parts.push(`Current dose: ${p.dose}`)
-        if (p.start_date) parts.push(`Started: ${p.start_date}`)
-        if (p.current_weight) parts.push(`Starting weight: ${p.current_weight} lbs`)
-        if (p.goal_weight) {
-          parts.push(`Goal weight: ${p.goal_weight} lbs`)
-          parts.push(`Daily protein target: ${Math.round(Number(p.goal_weight) * 0.8)}g`)
-        }
-        if (p.primary_goal) parts.push(`Primary goal: ${p.primary_goal}`)
-        if (p.biggest_challenge) parts.push(`Biggest challenge: ${p.biggest_challenge}`)
-        if (p.exercise_level) parts.push(`Exercise level: ${p.exercise_level}`)
-      }
-
-      // Logs
-      if (body.userLogs) {
-        const logs = body.userLogs
-
-        // Weight
-        if (logs.latestWeight) {
-          parts.push(`\nCurrent weight: ${logs.latestWeight} lbs`)
-          if (logs.weightChange) parts.push(`Weight change from start: ${logs.weightChange} lbs`)
-        }
-
-        // Last injection
-        if (logs.lastInjection) {
-          parts.push(`\nLast injection: ${logs.lastInjection.date} at ${logs.lastInjection.site}`)
-          parts.push(`Days since injection: ${logs.lastInjection.daysAgo}`)
-        }
-
-        // Today's nutrition
-        if (logs.todayNutrition) {
-          const n = logs.todayNutrition
-          parts.push(`\nToday's nutrition so far:`)
-          parts.push(`  Calories: ${n.calories}`)
-          parts.push(`  Protein: ${n.protein}g${n.proteinTarget ? ` (target: ${n.proteinTarget}g, ${n.proteinRemaining}g remaining)` : ''}`)
-          parts.push(`  Carbs: ${n.carbs}g`)
-          parts.push(`  Fat: ${n.fat}g`)
-          if (n.meals && n.meals.length > 0) {
-            parts.push(`  Meals logged today:`)
-            n.meals.forEach((meal: { meal_type: string; food_name: string; protein: number; calories: number }) => {
-              parts.push(`    - ${meal.meal_type}: ${meal.food_name} (${meal.calories} cal, ${meal.protein}g protein)`)
-            })
-          }
-        }
-
-        // Water
-        if (logs.todayWater !== undefined) {
-          parts.push(`\nWater intake today: ${logs.todayWater} oz (goal: 80 oz)`)
-        }
-
-        // Recent side effects
-        if (logs.recentSideEffects && logs.recentSideEffects.length > 0) {
-          parts.push(`\nRecent side effects:`)
-          logs.recentSideEffects.forEach((e: { symptom: string; severity: number; date: string }) => {
-            parts.push(`  - ${e.symptom} (severity ${e.severity}/5) on ${e.date}`)
-          })
-        }
-      }
-
-      userContext = parts.join('\n')
-    }
-
-    const systemPrompt = SYSTEM_PROMPT.replace('{USER_CONTEXT}', userContext)
-
-    const messages = body.messages.slice(-20).map((msg: { role: string; content: string }) => ({
-      role: msg.role as 'user' | 'assistant',
-      content: msg.content.slice(0, 2000)
-    }))
-
-    const response = await client.messages.create({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 1024,
-      system: systemPrompt,
-      messages,
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': process.env.ANTHROPIC_API_KEY || '',
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 500,
+        system: systemPrompt,
+        messages: messages.slice(-20), // Last 20 messages for conversation context
+      }),
     })
 
-    const assistantMessage = response.content[0].type === 'text'
-      ? response.content[0].text
-      : "I'm having trouble responding right now. Please try again."
-
-    return NextResponse.json({ message: assistantMessage })
-
-  } catch (error) {
-    console.error('Chat API error:', error)
-    return NextResponse.json({ error: 'Something went wrong. Please try again.' }, { status: 500 })
+    const result = await res.json()
+    const reply = result.content?.[0]?.text || "I'm here — what's on your mind?"
+    return NextResponse.json({ message: reply })
+  } catch {
+    return NextResponse.json({ error: 'Failed to connect' }, { status: 500 })
   }
-}
-
-export async function GET() {
-  return NextResponse.json({ error: 'Method not allowed' }, { status: 405 })
 }
