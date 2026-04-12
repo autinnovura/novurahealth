@@ -15,361 +15,348 @@ const MEDICATIONS = [
 ]
 
 const DOSES: Record<string, string[]> = {
-  Ozempic: ['0.25mg', '0.5mg', '1mg', '2mg'],
-  Wegovy: ['0.25mg', '0.5mg', '1mg', '1.7mg', '2.4mg'],
-  Mounjaro: ['2.5mg', '5mg', '7.5mg', '10mg', '12.5mg', '15mg'],
-  Zepbound: ['2.5mg', '5mg', '7.5mg', '10mg', '12.5mg', '15mg'],
-  Saxenda: ['0.6mg', '1.2mg', '1.8mg', '2.4mg', '3mg'],
-  Rybelsus: ['3mg', '7mg', '14mg'],
-  Other: ['Custom'],
+  Ozempic: ['0.25', '0.5', '1', '2'],
+  Wegovy: ['0.25', '0.5', '1', '1.7', '2.4'],
+  Mounjaro: ['2.5', '5', '7.5', '10', '12.5', '15'],
+  Zepbound: ['2.5', '5', '7.5', '10', '12.5', '15'],
+  Saxenda: ['0.6', '1.2', '1.8', '2.4', '3'],
+  Rybelsus: ['3', '7', '14'],
+  Other: [],
 }
 
-const GOALS = ['Lose weight', 'Manage blood sugar', 'Reduce appetite', 'Improve overall health', 'Build better habits']
-const CHALLENGES = ['Side effects', 'Staying consistent', 'Nutrition & protein', 'Cost of medication', 'Plateau / slow progress', 'Motivation']
-const EXERCISE_LEVELS = ['Sedentary', 'Light (1-2x/week)', 'Moderate (3-4x/week)', 'Active (5+/week)']
+const FREQUENCIES = ['Weekly', 'Every 2 weeks', 'Daily', 'Other']
 
-type Step = 'welcome' | 'name' | 'medication' | 'dose' | 'start_date' | 'current_weight' | 'goal_weight' | 'primary_goal' | 'biggest_challenge' | 'exercise_level' | 'complete'
+const CALORIE_RANGES = ['Under 1,200', '1,200 – 1,500', '1,500 – 1,800', '1,800 – 2,200', '2,200+', 'Not sure']
+const PROTEIN_RANGES = ['Under 50g', '50 – 80g', '80 – 120g', '120g+', 'Not sure']
+const WATER_RANGES = ['Under 30oz/day', '30 – 50oz/day', '50 – 80oz/day', '80oz+/day', 'Not sure']
 
-interface Message {
-  role: 'nova' | 'user'
-  content: string
-  options?: { label: string; sub?: string }[]
-  inputType?: 'text' | 'number' | 'date'
-  inputPlaceholder?: string
-  showDateToggle?: boolean
-}
+const SYMPTOMS = ['Nausea', 'Constipation', 'Diarrhea', 'Fatigue', 'Headache', 'Heartburn', 'Sulfur burps', 'Injection site pain', 'Loss of appetite', 'Dizziness', 'Vomiting', 'Hair thinning', 'None so far']
+
+type Step = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9
+const TOTAL_STEPS = 9
 
 export default function Onboarding() {
   const router = useRouter()
   const [userId, setUserId] = useState<string | null>(null)
-  const [step, setStep] = useState<Step>('welcome')
-  const [messages, setMessages] = useState<Message[]>([])
-  const [inputValue, setInputValue] = useState('')
-  const [isTyping, setIsTyping] = useState(false)
-  const [isJustStarting, setIsJustStarting] = useState(false)
+  const [step, setStep] = useState<Step>(1)
   const [saving, setSaving] = useState(false)
-  const scrollRef = useRef<HTMLDivElement>(null)
-  const inputRef = useRef<HTMLInputElement>(null)
 
-  // Profile data
-  const [profile, setProfile] = useState({
-    name: '', medication: '', dose: '', start_date: '',
-    current_weight: '', goal_weight: '', primary_goal: '',
-    biggest_challenge: '', exercise_level: '',
-  })
+  // Form data
+  const [name, setName] = useState('')
+  const [medication, setMedication] = useState('')
+  const [dose, setDose] = useState('')
+  const [customDose, setCustomDose] = useState('')
+  const [frequency, setFrequency] = useState('')
+  const [currentWeight, setCurrentWeight] = useState('')
+  const [goalWeight, setGoalWeight] = useState('')
+  const [startDate, setStartDate] = useState('')
+  const [justStarting, setJustStarting] = useState(false)
+  const [avgCalories, setAvgCalories] = useState('')
+  const [avgProtein, setAvgProtein] = useState('')
+  const [avgWater, setAvgWater] = useState('')
+  const [symptoms, setSymptoms] = useState<string[]>([])
+
+  const weightRef = useRef<HTMLInputElement>(null)
+  const goalRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     async function checkAuth() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) { router.push('/login'); return }
       setUserId(user.id)
-
-      // Check if already onboarded
       const { data: p } = await supabase.from('profiles').select('*').eq('id', user.id).single()
       if (p?.name) { router.push('/dashboard'); return }
-
-      // Start the conversation
-      fetchNovaResponse('welcome', '')
     }
     checkAuth()
   }, [router])
 
-  useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
-  }, [messages, isTyping])
+  function next() { if (step < TOTAL_STEPS) setStep((step + 1) as Step) }
+  function back() { if (step > 1) setStep((step - 1) as Step) }
 
-  async function fetchNovaResponse(currentStep: string, data: string) {
-    setIsTyping(true)
-    try {
-      const res = await fetch('/api/onboarding-chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ step: currentStep, data }),
-      })
-      const { message } = await res.json()
-
-      // Simulate typing delay
-      await new Promise(r => setTimeout(r, 600 + Math.random() * 800))
-      setIsTyping(false)
-
-      const novaMsg: Message = { role: 'nova', content: message }
-
-      // Add options based on next step
-      const nextStep = getNextStep(currentStep as Step)
-      if (nextStep === 'name') {
-        novaMsg.inputType = 'text'
-        novaMsg.inputPlaceholder = 'Type your name...'
-      } else if (nextStep === 'medication') {
-        novaMsg.options = MEDICATIONS.map(m => ({ label: m.label, sub: m.sub }))
-      } else if (nextStep === 'dose') {
-        const med = profile.medication || data
-        const doses = DOSES[med] || DOSES['Other']
-        novaMsg.options = doses.map(d => ({ label: d }))
-      } else if (nextStep === 'start_date') {
-        novaMsg.inputType = 'date'
-        novaMsg.showDateToggle = true
-      } else if (nextStep === 'current_weight') {
-        novaMsg.inputType = 'number'
-        novaMsg.inputPlaceholder = 'Enter weight in lbs...'
-      } else if (nextStep === 'goal_weight') {
-        novaMsg.inputType = 'number'
-        novaMsg.inputPlaceholder = 'Enter goal weight in lbs...'
-      } else if (nextStep === 'primary_goal') {
-        novaMsg.options = GOALS.map(g => ({ label: g }))
-      } else if (nextStep === 'biggest_challenge') {
-        novaMsg.options = CHALLENGES.map(c => ({ label: c }))
-      } else if (nextStep === 'exercise_level') {
-        novaMsg.options = EXERCISE_LEVELS.map(l => ({ label: l }))
-      }
-
-      setMessages(prev => [...prev, novaMsg])
-      setStep(nextStep)
-    } catch {
-      setIsTyping(false)
-      setMessages(prev => [...prev, { role: 'nova', content: "Let's keep going!" }])
-    }
-  }
-
-  function getNextStep(current: Step): Step {
-    const flow: Step[] = ['welcome', 'name', 'medication', 'dose', 'start_date', 'current_weight', 'goal_weight', 'primary_goal', 'biggest_challenge', 'exercise_level', 'complete']
-    const idx = flow.indexOf(current)
-    return flow[idx + 1] || 'complete'
-  }
-
-  async function handleAnswer(answer: string) {
-    // Add user message
-    setMessages(prev => [...prev, { role: 'user', content: answer }])
-    setInputValue('')
-
-    // Update profile
-    const updated = { ...profile }
+  function canAdvance(): boolean {
     switch (step) {
-      case 'name': updated.name = answer; break
-      case 'medication': updated.medication = answer; break
-      case 'dose': updated.dose = answer; break
-      case 'start_date': updated.start_date = answer === 'Just starting' ? '' : answer; break
-      case 'current_weight': updated.current_weight = answer.replace(/[^0-9.]/g, ''); break
-      case 'goal_weight': updated.goal_weight = answer.replace(/[^0-9.]/g, ''); break
-      case 'primary_goal': updated.primary_goal = answer; break
-      case 'biggest_challenge': updated.biggest_challenge = answer; break
-      case 'exercise_level': updated.exercise_level = answer; break
-    }
-    setProfile(updated)
-
-    // If this is the last step, save and redirect
-    if (step === 'exercise_level') {
-      setIsTyping(true)
-      await new Promise(r => setTimeout(r, 600 + Math.random() * 800))
-
-      // Get Nova's final message
-      try {
-        const res = await fetch('/api/onboarding-chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ step: 'exercise_level', data: answer }),
-        })
-        const { message } = await res.json()
-        setIsTyping(false)
-        setMessages(prev => [...prev, { role: 'nova', content: message }])
-      } catch {
-        setIsTyping(false)
-        setMessages(prev => [...prev, { role: 'nova', content: "Alright, I've got everything I need! Your dashboard is ready. Let's do this 🌿" }])
-      }
-
-      setStep('complete')
-
-      // Save to Supabase
-      setSaving(true)
-      if (userId) {
-        await supabase.from('profiles').upsert({
-          id: userId,
-          ...updated,
-        })
-      }
-      setSaving(false)
-      return
-    }
-
-    // Fetch next Nova response
-    const dataForNova = step === 'start_date' && answer === 'Just starting' ? 'just_starting' : answer
-    fetchNovaResponse(step, dataForNova)
-  }
-
-  function handleSubmitInput() {
-    if (!inputValue.trim()) return
-    const display = step === 'current_weight' || step === 'goal_weight' ? `${inputValue} lbs` : inputValue
-    handleAnswer(display)
-  }
-
-  function handleDateSubmit() {
-    if (isJustStarting) {
-      handleAnswer('Just starting')
-    } else if (inputValue) {
-      const formatted = new Date(inputValue + 'T00:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
-      handleAnswer(formatted)
+      case 1: return name.trim().length > 0
+      case 2: return medication.length > 0
+      case 3: return dose.length > 0 || customDose.length > 0
+      case 4: return frequency.length > 0
+      case 5: return currentWeight.length > 0 && goalWeight.length > 0
+      case 6: return justStarting || startDate.length > 0
+      case 7: return avgCalories.length > 0 && avgProtein.length > 0
+      case 8: return avgWater.length > 0
+      case 9: return symptoms.length > 0
+      default: return false
     }
   }
 
-  const progressSteps: Step[] = ['name', 'medication', 'dose', 'start_date', 'current_weight', 'goal_weight', 'primary_goal', 'biggest_challenge', 'exercise_level']
-  const progressIdx = progressSteps.indexOf(step)
-  const progressPct = step === 'complete' ? 100 : step === 'welcome' ? 0 : Math.round(((progressIdx + 1) / progressSteps.length) * 100)
+  async function finish() {
+    if (!userId) return
+    setSaving(true)
+    const finalDose = dose === 'custom' ? `${customDose}mg` : `${dose}mg`
+    await supabase.from('profiles').upsert({
+      id: userId,
+      name,
+      medication,
+      dose: finalDose,
+      injection_frequency: frequency,
+      current_weight: currentWeight,
+      goal_weight: goalWeight,
+      start_date: justStarting ? new Date().toISOString().split('T')[0] : startDate,
+      avg_calories: avgCalories,
+      avg_protein: avgProtein,
+      avg_water: avgWater,
+      initial_symptoms: symptoms,
+      primary_goal: 'Lose weight',
+      exercise_level: '',
+      biggest_challenge: '',
+    })
+    setSaving(false)
+    router.push('/dashboard')
+  }
+
+  function toggleSymptom(s: string) {
+    if (s === 'None so far') { setSymptoms(['None so far']); return }
+    setSymptoms(prev => {
+      const filtered = prev.filter(x => x !== 'None so far')
+      return filtered.includes(s) ? filtered.filter(x => x !== s) : [...filtered, s]
+    })
+  }
+
+  const stepTitles: Record<Step, string> = {
+    1: "What's your name?",
+    2: "Which GLP-1 are you on?",
+    3: "What's your dosage?",
+    4: "How often do you inject?",
+    5: "Weight",
+    6: "When did you start?",
+    7: "Typical daily nutrition",
+    8: "Water intake",
+    9: "Any side effects?",
+  }
 
   return (
     <div className="min-h-screen bg-[#FAFAF7] flex flex-col">
       {/* Header */}
-      <header className="bg-[#2D5A3D] px-5 py-4 shrink-0">
-        <div className="max-w-2xl mx-auto">
+      <header className="bg-[#2D5A3D] px-5 pt-5 pb-4 shrink-0">
+        <div className="max-w-lg mx-auto">
           <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-full bg-white/15 flex items-center justify-center">
-                <span className="text-sm">🌿</span>
-              </div>
-              <div>
-                <p className="text-white text-sm font-semibold">Nova</p>
-                <p className="text-white/40 text-[10px]">Your health coach</p>
-              </div>
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 rounded-full bg-white/15 flex items-center justify-center"><span className="text-sm">🌿</span></div>
+              <span className="text-white/80 text-sm font-medium">NovuraHealth</span>
             </div>
-            <span className="text-white/30 text-xs">{progressPct}%</span>
+            <span className="text-white/40 text-xs">{step} of {TOTAL_STEPS}</span>
           </div>
-          <div className="h-1 bg-white/10 rounded-full overflow-hidden">
-            <div className="h-full bg-white/60 rounded-full transition-all duration-700 ease-out" style={{ width: `${progressPct}%` }} />
+          <div className="flex gap-1">
+            {Array.from({ length: TOTAL_STEPS }, (_, i) => (
+              <div key={i} className={`flex-1 h-1 rounded-full transition-all duration-300 ${i < step ? 'bg-white/80' : 'bg-white/15'}`} />
+            ))}
           </div>
         </div>
       </header>
 
-      {/* Chat area */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-5 max-w-2xl mx-auto w-full">
-        <div className="space-y-4">
-          {messages.map((msg, i) => (
-            <div key={i}>
-              {/* Message bubble */}
-              <div className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                {msg.role === 'nova' && (
-                  <div className="w-7 h-7 rounded-full bg-[#2D5A3D] flex items-center justify-center shrink-0 mr-2 mt-1">
-                    <span className="text-xs">🌿</span>
-                  </div>
-                )}
-                <div className={`max-w-[80%] px-4 py-3 rounded-2xl text-sm leading-relaxed ${
-                  msg.role === 'user'
-                    ? 'bg-[#2D5A3D] text-white rounded-br-md'
-                    : 'bg-white border border-[#EDEDEA] text-[#1E1E1C] rounded-bl-md shadow-sm'
-                }`}>
-                  {msg.content}
-                </div>
-              </div>
+      {/* Content */}
+      <div className="flex-1 px-5 py-6 max-w-lg mx-auto w-full flex flex-col">
+        <h2 className="text-xl font-bold text-[#1E1E1C] mb-1">{stepTitles[step]}</h2>
 
-              {/* Options (show only on last nova message) */}
-              {msg.role === 'nova' && msg.options && i === messages.length - 1 && step !== 'complete' && (
-                <div className="mt-3 ml-9 flex flex-wrap gap-2">
-                  {msg.options.map(opt => (
-                    <button key={opt.label} onClick={() => handleAnswer(opt.label)}
-                      className="bg-white border border-[#EDEDEA] hover:border-[#2D5A3D] hover:bg-[#E8F0EB] px-4 py-2.5 rounded-xl text-sm text-[#1E1E1C] cursor-pointer transition-all active:scale-95 shadow-sm">
-                      <span className="font-medium">{opt.label}</span>
-                      {opt.sub && <span className="text-[#B0B0A8] text-xs ml-1.5">({opt.sub})</span>}
+        <div className="flex-1 mt-4">
+
+          {/* STEP 1: Name */}
+          {step === 1 && (
+            <input type="text" value={name} onChange={e => setName(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && canAdvance() && next()}
+              placeholder="First name" autoFocus
+              className="w-full px-4 py-4 rounded-xl border-2 border-[#EDEDEA] text-lg text-[#1E1E1C] font-medium outline-none focus:border-[#2D5A3D] placeholder:text-[#C5C5BE] transition-colors" />
+          )}
+
+          {/* STEP 2: Medication */}
+          {step === 2 && (
+            <div className="space-y-2">
+              {MEDICATIONS.map(m => (
+                <button key={m.label} onClick={() => { setMedication(m.label); setDose(''); setCustomDose('') }}
+                  className={`w-full flex items-center justify-between px-4 py-3.5 rounded-xl border-2 cursor-pointer transition-all ${medication === m.label ? 'border-[#2D5A3D] bg-[#E8F0EB]' : 'border-[#EDEDEA] bg-white hover:border-[#B0B0A8]'}`}>
+                  <span className={`text-sm ${medication === m.label ? 'text-[#2D5A3D] font-semibold' : 'text-[#1E1E1C]'}`}>{m.label}</span>
+                  {m.sub && <span className="text-xs text-[#B0B0A8]">{m.sub}</span>}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* STEP 3: Dosage */}
+          {step === 3 && (
+            <div className="space-y-3">
+              <p className="text-xs text-[#8B8B83] mb-2">{medication} doses (mg)</p>
+              {DOSES[medication]?.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {DOSES[medication].map(d => (
+                    <button key={d} onClick={() => { setDose(d); setCustomDose('') }}
+                      className={`px-5 py-3 rounded-xl border-2 text-sm font-semibold cursor-pointer transition-all ${dose === d ? 'border-[#2D5A3D] bg-[#E8F0EB] text-[#2D5A3D]' : 'border-[#EDEDEA] bg-white text-[#1E1E1C] hover:border-[#B0B0A8]'}`}>
+                      {d}<span className="text-xs font-normal text-[#B0B0A8] ml-0.5">mg</span>
                     </button>
                   ))}
                 </div>
               )}
-
-              {/* Date input with toggle */}
-              {msg.role === 'nova' && msg.showDateToggle && i === messages.length - 1 && step !== 'complete' && (
-                <div className="mt-3 ml-9 space-y-3">
-                  <div className="flex gap-2">
-                    <button onClick={() => setIsJustStarting(false)}
-                      className={`flex-1 py-2.5 rounded-xl text-xs font-semibold cursor-pointer transition-all ${!isJustStarting ? 'bg-[#2D5A3D] text-white' : 'bg-white border border-[#EDEDEA] text-[#8B8B83]'}`}>
-                      I have a start date
-                    </button>
-                    <button onClick={() => setIsJustStarting(true)}
-                      className={`flex-1 py-2.5 rounded-xl text-xs font-semibold cursor-pointer transition-all ${isJustStarting ? 'bg-[#2D5A3D] text-white' : 'bg-white border border-[#EDEDEA] text-[#8B8B83]'}`}>
-                      Just starting
-                    </button>
-                  </div>
-                  {!isJustStarting && (
-                    <input type="date" value={inputValue} onChange={e => setInputValue(e.target.value)}
-                      className="w-full px-4 py-3 rounded-xl border border-[#EDEDEA] bg-white text-sm text-[#1E1E1C] outline-none focus:border-[#2D5A3D]" />
-                  )}
-                  <button onClick={handleDateSubmit} disabled={!isJustStarting && !inputValue}
-                    className="w-full py-3 rounded-xl bg-[#2D5A3D] text-white text-sm font-semibold cursor-pointer disabled:opacity-30 transition-opacity">
-                    Continue
-                  </button>
-                </div>
-              )}
-            </div>
-          ))}
-
-          {/* Typing indicator */}
-          {isTyping && (
-            <div className="flex justify-start">
-              <div className="w-7 h-7 rounded-full bg-[#2D5A3D] flex items-center justify-center shrink-0 mr-2 mt-1">
-                <span className="text-xs">🌿</span>
-              </div>
-              <div className="bg-white border border-[#EDEDEA] px-4 py-3 rounded-2xl rounded-bl-md shadow-sm">
-                <div className="flex gap-1.5">
-                  <div className="w-2 h-2 rounded-full bg-[#B0B0A8] animate-bounce" style={{ animationDelay: '0ms' }} />
-                  <div className="w-2 h-2 rounded-full bg-[#B0B0A8] animate-bounce" style={{ animationDelay: '150ms' }} />
-                  <div className="w-2 h-2 rounded-full bg-[#B0B0A8] animate-bounce" style={{ animationDelay: '300ms' }} />
+              <div>
+                <p className="text-xs text-[#B0B0A8] mb-1.5">{DOSES[medication]?.length > 0 ? 'Or enter custom dose' : 'Enter your dose'}</p>
+                <div className="flex items-center gap-2">
+                  <input type="number" value={customDose} onChange={e => { setCustomDose(e.target.value); setDose('custom') }}
+                    placeholder="0.0" step="0.1"
+                    className="flex-1 px-4 py-3 rounded-xl border-2 border-[#EDEDEA] text-sm text-[#1E1E1C] outline-none focus:border-[#2D5A3D] placeholder:text-[#C5C5BE]" />
+                  <span className="text-sm text-[#8B8B83] font-medium">mg</span>
                 </div>
               </div>
             </div>
           )}
 
-          {/* Complete state */}
-          {step === 'complete' && (
-            <div className="mt-6">
-              {/* Profile summary card */}
-              <div className="bg-white border border-[#EDEDEA] rounded-2xl p-5 shadow-sm space-y-3 mb-4">
-                <p className="text-[10px] font-semibold text-[#B0B0A8] uppercase tracking-wider">Your Profile</p>
-                <div className="grid grid-cols-2 gap-3">
-                  {[
-                    { label: 'Name', value: profile.name },
-                    { label: 'Medication', value: `${profile.medication} · ${profile.dose}` },
-                    { label: 'Current', value: `${profile.current_weight} lbs` },
-                    { label: 'Goal', value: `${profile.goal_weight} lbs` },
-                    { label: 'Focus', value: profile.primary_goal },
-                    { label: 'Activity', value: profile.exercise_level },
-                  ].map(item => (
-                    <div key={item.label} className="bg-[#F5F5F2] rounded-lg px-3 py-2">
-                      <p className="text-[9px] text-[#B0B0A8] uppercase font-semibold">{item.label}</p>
-                      <p className="text-sm text-[#1E1E1C] font-medium mt-0.5">{item.value || '—'}</p>
-                    </div>
+          {/* STEP 4: Frequency */}
+          {step === 4 && (
+            <div className="space-y-2">
+              {FREQUENCIES.map(f => (
+                <button key={f} onClick={() => setFrequency(f)}
+                  className={`w-full px-4 py-3.5 rounded-xl border-2 text-sm text-left cursor-pointer transition-all ${frequency === f ? 'border-[#2D5A3D] bg-[#E8F0EB] text-[#2D5A3D] font-semibold' : 'border-[#EDEDEA] bg-white text-[#1E1E1C] hover:border-[#B0B0A8]'}`}>
+                  {f}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* STEP 5: Weight */}
+          {step === 5 && (
+            <div className="space-y-5">
+              <div>
+                <label className="text-xs text-[#8B8B83] font-medium mb-2 block">Current weight</label>
+                <div className="flex items-center gap-3">
+                  <button onClick={() => setCurrentWeight(String(Math.max(80, (parseInt(currentWeight) || 200) - 1)))}
+                    className="w-11 h-11 rounded-full bg-[#F5F5F2] text-[#6B6B65] flex items-center justify-center text-xl font-bold cursor-pointer hover:bg-[#EDEDEA] active:scale-95 transition-all">−</button>
+                  <input ref={weightRef} type="number" value={currentWeight} onChange={e => setCurrentWeight(e.target.value)}
+                    placeholder="175"
+                    className="flex-1 text-center px-4 py-3.5 rounded-xl border-2 border-[#EDEDEA] text-2xl font-bold text-[#1E1E1C] outline-none focus:border-[#2D5A3D] placeholder:text-[#C5C5BE] placeholder:font-normal placeholder:text-base" />
+                  <button onClick={() => setCurrentWeight(String((parseInt(currentWeight) || 200) + 1))}
+                    className="w-11 h-11 rounded-full bg-[#F5F5F2] text-[#6B6B65] flex items-center justify-center text-xl font-bold cursor-pointer hover:bg-[#EDEDEA] active:scale-95 transition-all">+</button>
+                  <span className="text-sm text-[#B0B0A8] font-medium">lbs</span>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs text-[#8B8B83] font-medium mb-2 block">Goal weight</label>
+                <div className="flex items-center gap-3">
+                  <button onClick={() => setGoalWeight(String(Math.max(80, (parseInt(goalWeight) || 160) - 1)))}
+                    className="w-11 h-11 rounded-full bg-[#F5F5F2] text-[#6B6B65] flex items-center justify-center text-xl font-bold cursor-pointer hover:bg-[#EDEDEA] active:scale-95 transition-all">−</button>
+                  <input ref={goalRef} type="number" value={goalWeight} onChange={e => setGoalWeight(e.target.value)}
+                    placeholder="155"
+                    className="flex-1 text-center px-4 py-3.5 rounded-xl border-2 border-[#EDEDEA] text-2xl font-bold text-[#1E1E1C] outline-none focus:border-[#2D5A3D] placeholder:text-[#C5C5BE] placeholder:font-normal placeholder:text-base" />
+                  <button onClick={() => setGoalWeight(String((parseInt(goalWeight) || 160) + 1))}
+                    className="w-11 h-11 rounded-full bg-[#F5F5F2] text-[#6B6B65] flex items-center justify-center text-xl font-bold cursor-pointer hover:bg-[#EDEDEA] active:scale-95 transition-all">+</button>
+                  <span className="text-sm text-[#B0B0A8] font-medium">lbs</span>
+                </div>
+              </div>
+              {currentWeight && goalWeight && parseInt(currentWeight) > parseInt(goalWeight) && (
+                <div className="bg-[#E8F0EB] rounded-xl px-4 py-3 text-center">
+                  <span className="text-sm text-[#2D5A3D] font-medium">{parseInt(currentWeight) - parseInt(goalWeight)} lbs to go</span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* STEP 6: Start date */}
+          {step === 6 && (
+            <div className="space-y-3">
+              <div className="flex gap-2 mb-2">
+                <button onClick={() => { setJustStarting(false) }}
+                  className={`flex-1 py-3 rounded-xl border-2 text-sm font-semibold cursor-pointer transition-all ${!justStarting ? 'border-[#2D5A3D] bg-[#E8F0EB] text-[#2D5A3D]' : 'border-[#EDEDEA] text-[#8B8B83]'}`}>
+                  I have a date
+                </button>
+                <button onClick={() => { setJustStarting(true); setStartDate('') }}
+                  className={`flex-1 py-3 rounded-xl border-2 text-sm font-semibold cursor-pointer transition-all ${justStarting ? 'border-[#2D5A3D] bg-[#E8F0EB] text-[#2D5A3D]' : 'border-[#EDEDEA] text-[#8B8B83]'}`}>
+                  Just starting
+                </button>
+              </div>
+              {!justStarting && (
+                <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)}
+                  className="w-full px-4 py-3.5 rounded-xl border-2 border-[#EDEDEA] text-sm text-[#1E1E1C] outline-none focus:border-[#2D5A3D]" />
+              )}
+              {justStarting && (
+                <div className="bg-[#E8F0EB] rounded-xl px-4 py-3">
+                  <p className="text-sm text-[#2D5A3D] font-medium">Welcome to the start of your journey 🌿</p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* STEP 7: Macros */}
+          {step === 7 && (
+            <div className="space-y-5">
+              <div>
+                <label className="text-xs text-[#8B8B83] font-medium mb-2 block">Daily calories (roughly)</label>
+                <div className="flex flex-wrap gap-2">
+                  {CALORIE_RANGES.map(c => (
+                    <button key={c} onClick={() => setAvgCalories(c)}
+                      className={`px-3.5 py-2.5 rounded-xl border-2 text-xs cursor-pointer transition-all ${avgCalories === c ? 'border-[#2D5A3D] bg-[#E8F0EB] text-[#2D5A3D] font-semibold' : 'border-[#EDEDEA] bg-white text-[#1E1E1C] hover:border-[#B0B0A8]'}`}>
+                      {c}
+                    </button>
                   ))}
                 </div>
               </div>
+              <div>
+                <label className="text-xs text-[#8B8B83] font-medium mb-2 block">Daily protein</label>
+                <div className="flex flex-wrap gap-2">
+                  {PROTEIN_RANGES.map(p => (
+                    <button key={p} onClick={() => setAvgProtein(p)}
+                      className={`px-3.5 py-2.5 rounded-xl border-2 text-xs cursor-pointer transition-all ${avgProtein === p ? 'border-[#2D5A3D] bg-[#E8F0EB] text-[#2D5A3D] font-semibold' : 'border-[#EDEDEA] bg-white text-[#1E1E1C] hover:border-[#B0B0A8]'}`}>
+                      {p}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
 
-              <button onClick={() => router.push('/dashboard')} disabled={saving}
-                className="w-full bg-[#2D5A3D] text-white py-4 rounded-xl text-sm font-semibold cursor-pointer hover:bg-[#3A7A52] transition-colors disabled:opacity-50 active:scale-[0.98]">
-                {saving ? 'Setting up...' : 'Go to Dashboard →'}
-              </button>
+          {/* STEP 8: Water */}
+          {step === 8 && (
+            <div className="space-y-2">
+              <p className="text-xs text-[#8B8B83] mb-2">Average daily intake</p>
+              {WATER_RANGES.map(w => (
+                <button key={w} onClick={() => setAvgWater(w)}
+                  className={`w-full px-4 py-3.5 rounded-xl border-2 text-sm text-left cursor-pointer transition-all ${avgWater === w ? 'border-[#2D5A3D] bg-[#E8F0EB] text-[#2D5A3D] font-semibold' : 'border-[#EDEDEA] bg-white text-[#1E1E1C] hover:border-[#B0B0A8]'}`}>
+                  💧 {w}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* STEP 9: Symptoms */}
+          {step === 9 && (
+            <div>
+              <p className="text-xs text-[#8B8B83] mb-3">Select all that apply</p>
+              <div className="flex flex-wrap gap-2">
+                {SYMPTOMS.map(s => (
+                  <button key={s} onClick={() => toggleSymptom(s)}
+                    className={`px-3.5 py-2.5 rounded-xl border-2 text-xs cursor-pointer transition-all ${symptoms.includes(s) ? s === 'None so far' ? 'border-[#2D5A3D] bg-[#E8F0EB] text-[#2D5A3D] font-semibold' : 'border-[#C4742B] bg-[#FFF0E5] text-[#C4742B] font-semibold' : 'border-[#EDEDEA] bg-white text-[#1E1E1C] hover:border-[#B0B0A8]'}`}>
+                    {s}
+                  </button>
+                ))}
+              </div>
             </div>
           )}
         </div>
-      </div>
 
-      {/* Input bar (for text/number steps) */}
-      {!isTyping && step !== 'complete' && step !== 'welcome' && messages.length > 0 && (() => {
-        const lastNova = [...messages].reverse().find(m => m.role === 'nova')
-        if (!lastNova?.inputType || lastNova.showDateToggle) return null
-        return (
-          <div className="shrink-0 bg-white border-t border-[#EDEDEA] px-4 py-3 max-w-2xl mx-auto w-full">
-            <div className="flex gap-2">
-              <input
-                ref={inputRef}
-                type={lastNova.inputType === 'number' ? 'number' : 'text'}
-                value={inputValue}
-                onChange={e => setInputValue(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && handleSubmitInput()}
-                placeholder={lastNova.inputPlaceholder || 'Type here...'}
-                autoFocus
-                className="flex-1 px-4 py-3 rounded-xl border border-[#EDEDEA] bg-[#FAFAF7] text-sm text-[#1E1E1C] outline-none focus:border-[#2D5A3D] placeholder:text-[#C5C5BE]"
-              />
-              <button onClick={handleSubmitInput} disabled={!inputValue.trim()}
-                className="bg-[#2D5A3D] text-white px-5 py-3 rounded-xl text-sm font-semibold cursor-pointer disabled:opacity-30 transition-opacity active:scale-95">
-                Send
-              </button>
-            </div>
-          </div>
-        )
-      })()}
+        {/* Navigation */}
+        <div className="shrink-0 pt-4 space-y-2">
+          {step < TOTAL_STEPS ? (
+            <button onClick={next} disabled={!canAdvance()}
+              className="w-full bg-[#2D5A3D] text-white py-3.5 rounded-xl text-sm font-semibold cursor-pointer disabled:opacity-30 transition-all active:scale-[0.98] hover:bg-[#3A7A52]">
+              Continue
+            </button>
+          ) : (
+            <button onClick={finish} disabled={!canAdvance() || saving}
+              className="w-full bg-[#2D5A3D] text-white py-3.5 rounded-xl text-sm font-semibold cursor-pointer disabled:opacity-30 transition-all active:scale-[0.98] hover:bg-[#3A7A52]">
+              {saving ? 'Setting up...' : 'Go to Dashboard →'}
+            </button>
+          )}
+          {step > 1 && (
+            <button onClick={back} className="w-full py-2.5 text-sm text-[#8B8B83] cursor-pointer hover:text-[#1E1E1C] transition-colors">
+              Back
+            </button>
+          )}
+        </div>
+      </div>
     </div>
   )
 }
