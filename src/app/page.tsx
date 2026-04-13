@@ -215,8 +215,8 @@ export default function Home() {
           </div>
           <div className="text-right">
             <div className="flex gap-6 justify-end">
-              <a href="#" className="text-sm text-white/40 hover:text-white transition-colors">Privacy Policy</a>
-              <a href="#" className="text-sm text-white/40 hover:text-white transition-colors">Terms of Service</a>
+              <a href="/privacy" className="text-sm text-white/40 hover:text-white transition-colors">Privacy Policy</a>
+              <a href="/terms" className="text-sm text-white/40 hover:text-white transition-colors">Terms of Service</a>
             </div>
             <p className="text-xs text-white/30 mt-3">&copy; 2026 NovuraHealth. All rights reserved.</p>
           </div>
