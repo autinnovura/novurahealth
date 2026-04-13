@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '../lib/supabase'
+import DataImport from '../components/DataImport'
 
 interface Profile {
   name: string; medication: string; dose: string; start_date: string
@@ -337,6 +338,9 @@ export default function Settings() {
 
         {/* ══════════ DATA ══════════ */}
         {activeSection === 'preferences' && (<>
+          {/* Import */}
+          {userId && <DataImport userId={userId} onImportComplete={() => window.location.reload()} />}
+
           {/* Export */}
           <div className="bg-white border border-[#EDEDEA] rounded-xl p-5 space-y-4">
             <h2 className="text-sm font-semibold text-[#1E1E1C]">Export Your Data</h2>

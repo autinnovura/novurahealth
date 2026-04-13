@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '../lib/supabase'
+import VoiceInput from '../components/VoiceInput'
 
 type Phase = 'exploring' | 'preparing' | 'tapering' | 'maintenance' | 'off_medication'
 
@@ -571,6 +572,7 @@ export default function Maintenance() {
                 onKeyDown={e => e.key === 'Enter' && sendChat()}
                 placeholder="Ask about tapering, maintenance..." autoFocus
                 className="flex-1 px-4 py-3 rounded-xl border border-[#EDEDEA] bg-white text-sm text-[#1E1E1C] outline-none focus:border-[#2D5A3D] placeholder:text-[#C5C5BE]"/>
+              <VoiceInput onResult={(text) => setChatInput(text)} />
               <button onClick={sendChat} disabled={chatLoading || !chatInput.trim()}
                 className="bg-[#2D5A3D] text-white px-5 py-3 rounded-xl text-sm font-semibold cursor-pointer disabled:opacity-30 transition-opacity">
                 Send
