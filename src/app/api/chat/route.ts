@@ -237,6 +237,13 @@ ${context}
    - Don't over-celebrate trivial things`
 
   try {
+    console.log('CHAT ENV CHECK:', {
+      hasAnthropicKey: !!process.env.ANTHROPIC_API_KEY,
+      keyPrefix: process.env.ANTHROPIC_API_KEY?.slice(0, 10),
+      hasSupabaseUrl: !!process.env.NEXT_PUBLIC_SUPABASE_URL,
+      hasServiceRole: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
+    })
+
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -248,14 +255,26 @@ ${context}
         model: 'claude-sonnet-4-20250514',
         max_tokens: 500,
         system: systemPrompt,
-        messages: messages.slice(-20), // Last 20 messages for conversation context
+        messages: messages.slice(-20),
       }),
     })
 
+    console.log('ANTHROPIC RESPONSE STATUS:', res.status)
+    if (!res.ok) {
+      const errorBody = await res.text()
+      console.error('ANTHROPIC ERROR:', errorBody)
+      return NextResponse.json({ message: "Nova is temporarily unavailable. Please try again." })
+    }
+
     const result = await res.json()
-    const reply = result.content?.[0]?.text || "I'm here — what's on your mind?"
+    const reply = result.content?.[0]?.text
+    if (!reply) {
+      console.error('ANTHROPIC EMPTY REPLY:', JSON.stringify(result))
+      return NextResponse.json({ message: "Nova is temporarily unavailable. Please try again." })
+    }
     return NextResponse.json({ message: reply })
-  } catch {
-    return NextResponse.json({ error: 'Failed to connect' }, { status: 500 })
+  } catch (error) {
+    console.error('CHAT ROUTE ERROR:', error)
+    return NextResponse.json({ message: "Nova is temporarily unavailable. Please try again." })
   }
 }

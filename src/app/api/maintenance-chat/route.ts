@@ -63,10 +63,22 @@ RULES:
       }),
     })
 
+    console.log('MAINTENANCE-CHAT ANTHROPIC STATUS:', res.status)
+    if (!res.ok) {
+      const errorBody = await res.text()
+      console.error('MAINTENANCE-CHAT ANTHROPIC ERROR:', errorBody)
+      return NextResponse.json({ message: "Nova is temporarily unavailable. Please try again." })
+    }
+
     const result = await res.json()
-    const reply = result.content?.[0]?.text || "I'm here to help with your transition plan. What's on your mind?"
+    const reply = result.content?.[0]?.text
+    if (!reply) {
+      console.error('MAINTENANCE-CHAT EMPTY REPLY:', JSON.stringify(result))
+      return NextResponse.json({ message: "Nova is temporarily unavailable. Please try again." })
+    }
     return NextResponse.json({ message: reply })
-  } catch {
-    return NextResponse.json({ message: "I'm having trouble connecting right now. Try again in a moment." })
+  } catch (error) {
+    console.error('MAINTENANCE-CHAT ROUTE ERROR:', error)
+    return NextResponse.json({ message: "Nova is temporarily unavailable. Please try again." })
   }
 }

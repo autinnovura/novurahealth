@@ -65,9 +65,23 @@ RULES:
         messages: [{ role: 'user', content: message }],
       }),
     })
+
+    console.log('SAVINGS-CHAT ANTHROPIC STATUS:', res.status)
+    if (!res.ok) {
+      const errorBody = await res.text()
+      console.error('SAVINGS-CHAT ANTHROPIC ERROR:', errorBody)
+      return NextResponse.json({ message: "Nova is temporarily unavailable. Please try again." })
+    }
+
     const result = await res.json()
-    return NextResponse.json({ message: result.content?.[0]?.text || "Let me help you save on your medication." })
-  } catch {
-    return NextResponse.json({ message: "Having trouble connecting. Try again in a moment." })
+    const reply = result.content?.[0]?.text
+    if (!reply) {
+      console.error('SAVINGS-CHAT EMPTY REPLY:', JSON.stringify(result))
+      return NextResponse.json({ message: "Nova is temporarily unavailable. Please try again." })
+    }
+    return NextResponse.json({ message: reply })
+  } catch (error) {
+    console.error('SAVINGS-CHAT ROUTE ERROR:', error)
+    return NextResponse.json({ message: "Nova is temporarily unavailable. Please try again." })
   }
 }
