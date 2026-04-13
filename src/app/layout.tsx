@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import StructuredData from "./components/StructuredData";
+import PWARegister from "./components/PWARegister";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -57,6 +58,11 @@ export const metadata: Metadata = {
     apple: "/apple-touch-icon.png",
   },
   manifest: "/site.webmanifest",
+  other: {
+    "apple-mobile-web-app-capable": "yes",
+    "apple-mobile-web-app-status-bar-style": "black-translucent",
+    "theme-color": "#2D5A3D",
+  },
 };
 
 export default function RootLayout({
@@ -71,6 +77,7 @@ export default function RootLayout({
     >
       <body className="min-h-full flex flex-col">
         <StructuredData />
+        <PWARegister />
         {children}
       </body>
     </html>
