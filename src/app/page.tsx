@@ -1,40 +1,4 @@
-'use client'
-
-import { useState } from 'react'
-
 export default function Home() {
-  const [email, setEmail] = useState('')
-  const [bottomEmail, setBottomEmail] = useState('')
-  const [submitted, setSubmitted] = useState(false)
-  const [bottomSubmitted, setBottomSubmitted] = useState(false)
-  const [error, setError] = useState('')
-
-  async function handleSubmit(e: React.FormEvent, location: 'top' | 'bottom') {
-    e.preventDefault()
-    const currentEmail = location === 'top' ? email : bottomEmail
-    setError('')
-
-    try {
-      const res = await fetch('/api/waitlist', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: currentEmail, source: location })
-      })
-
-      const data = await res.json()
-
-      if (!res.ok) {
-        setError(data.error || 'Something went wrong. Try again.')
-        return
-      }
-
-      if (location === 'top') setSubmitted(true)
-      else setBottomSubmitted(true)
-    } catch {
-      setError('Something went wrong. Try again.')
-    }
-  }
-
   return (
     <main className="bg-[#FFFBF5] text-[#2A2A28] min-h-screen">
       {/* NAV */}
@@ -63,64 +27,24 @@ export default function Home() {
       {/* HERO */}
       <section className="pt-36 pb-20 text-center px-6">
         <div className="max-w-3xl mx-auto">
-          <span className="inline-block bg-[#E8F0EB] text-[#2D5A3D] text-sm font-semibold px-4 py-1.5 rounded-full mb-6">
-            Launching Summer 2026
-          </span>
-
           <h1 className="text-4xl sm:text-5xl md:text-6xl font-extrabold tracking-tight text-[#1E1E1C] mb-5 leading-[1.1]">
             Your AI coach for the{' '}
             <span className="text-[#2D5A3D]">GLP-1 journey</span>
           </h1>
 
           <p className="text-lg sm:text-xl text-[#6B6B65] max-w-xl mx-auto mb-10 leading-relaxed">
-            Personalized coaching, side effect intelligence, nutrition planning, and the only transition planner built to help you thrive beyond the medication.
+            Track injections, nutrition, side effects, and weight — with an AI coach that knows YOUR data. The only GLP-1 app with a tapering plan.
           </p>
 
-          {!submitted ? (
-            <form
-              onSubmit={(e) => handleSubmit(e, 'top')}
-              className="flex flex-col sm:flex-row gap-3 max-w-md mx-auto mb-4"
-            >
-              <input
-                id="waitlist-input"
-                type="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="Enter your email"
-                className="flex-1 px-5 py-3.5 rounded-full border border-black/10 bg-white text-base outline-none focus:border-[#2D5A3D] transition-colors placeholder:text-[#9B9B93]"
-              />
-              <button
-                type="submit"
-                className="bg-[#2D5A3D] text-white px-8 py-3.5 rounded-full text-base font-semibold hover:bg-[#3A7A52] transition-colors cursor-pointer whitespace-nowrap"
-              >
-                Join the waitlist
-              </button>
-            </form>
-          ) : (
-            <div className="bg-[#E8F0EB] text-[#2D5A3D] px-6 py-3.5 rounded-full text-base font-medium max-w-md mx-auto mb-4">
-              You&apos;re on the list. We&apos;ll be in touch soon.
-            </div>
-          )}
-
-          {error && (
-            <p className="text-[#C4742B] text-sm mb-4">{error}</p>
-          )}
-
-          <p className="text-sm text-[#9B9B93] mb-6">
-            Free to join. No spam. No medical advice. Just early access.
+          <a
+            href="/signup"
+            className="inline-block bg-[#2D5A3D] text-white px-10 py-4 rounded-full text-lg font-semibold hover:bg-[#3A7A52] transition-colors"
+          >
+            Get Started Free
+          </a>
+          <p className="text-sm text-[#9B9B93] mt-3">
+            Free during beta. No credit card required.
           </p>
-
-          {/* TRY NOVA CTA */}
-          <div className="mt-2">
-            <a
-              href="/signup"
-              className="inline-block bg-[#C4742B] text-white px-8 py-3.5 rounded-full text-base font-semibold hover:bg-[#a86224] transition-colors"
-            >
-              Try Nova — AI Coach (Free)
-            </a>
-            <p className="text-xs text-[#9B9B93] mt-2">No credit card required. Start chatting in 60 seconds.</p>
-          </div>
 
           {/* STATS */}
           <div className="flex flex-wrap justify-center gap-8 sm:gap-16 mt-14">
@@ -271,39 +195,10 @@ export default function Home() {
 
           <a
             href="/signup"
-            className="inline-block bg-white text-[#2D5A3D] px-10 py-4 rounded-full text-lg font-semibold hover:bg-white/90 transition-colors mb-6"
+            className="inline-block bg-white text-[#2D5A3D] px-10 py-4 rounded-full text-lg font-semibold hover:bg-white/90 transition-colors"
           >
-            Get started free
+            Get Started Free
           </a>
-
-          <div className="border-t border-white/10 pt-8 mt-8">
-            <p className="text-white/40 text-sm mb-4">Or join the waitlist for updates</p>
-            {!bottomSubmitted ? (
-              <form
-                onSubmit={(e) => handleSubmit(e, 'bottom')}
-                className="flex flex-col sm:flex-row gap-3 max-w-md mx-auto"
-              >
-                <input
-                  type="email"
-                  required
-                  value={bottomEmail}
-                  onChange={(e) => setBottomEmail(e.target.value)}
-                  placeholder="Enter your email"
-                  className="flex-1 px-5 py-3.5 rounded-full border-none bg-white/15 text-white text-base outline-none focus:bg-white/25 transition-colors placeholder:text-white/45"
-                />
-                <button
-                  type="submit"
-                  className="bg-white/20 text-white px-8 py-3.5 rounded-full text-base font-semibold hover:bg-white/30 transition-colors cursor-pointer whitespace-nowrap"
-                >
-                  Join waitlist
-                </button>
-              </form>
-            ) : (
-              <div className="bg-white/15 text-white px-6 py-3.5 rounded-full text-base font-medium max-w-md mx-auto">
-                You&apos;re on the list. We&apos;ll be in touch soon.
-              </div>
-            )}
-          </div>
         </div>
       </section>
 
