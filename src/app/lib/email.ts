@@ -1,4 +1,5 @@
-const FROM_EMAIL = 'NovuraHealth <hello@novurahealth.com>'
+const FROM_NOVA = 'Nova <nova@novurahealth.com>'
+const FROM_SUPPORT = 'NovuraHealth <support@novurahealth.com>'
 
 async function sendEmail(params: { from: string; to: string; subject: string; html: string }) {
   const res = await fetch('https://api.resend.com/emails', {
@@ -21,7 +22,7 @@ async function sendEmail(params: { from: string; to: string; subject: string; ht
 
 export async function sendWelcomeEmail(email: string, name: string) {
   return sendEmail({
-    from: FROM_EMAIL,
+    from: FROM_NOVA,
     to: email,
     subject: `Welcome to NovuraHealth, ${name}!`,
     html: `
@@ -68,7 +69,7 @@ export async function sendWeeklyDigest(
   const { currentWeight, weightChange, logsThisWeek, streak } = stats
 
   return sendEmail({
-    from: FROM_EMAIL,
+    from: FROM_SUPPORT,
     to: email,
     subject: `${name}, here's your weekly progress`,
     html: `
