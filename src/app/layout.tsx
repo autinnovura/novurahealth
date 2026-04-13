@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import StructuredData from "./components/StructuredData";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -13,8 +14,40 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "NovuraHealth — Modern GLP-1 Weight Loss Solutions",
-  description: "Science-backed GLP-1 receptor agonist therapy for sustainable weight loss.",
+  title: "NovuraHealth — AI-Powered GLP-1 Medication Companion",
+  description:
+    "Track your Ozempic, Wegovy, Mounjaro, or Zepbound journey with an AI health coach. Log injections, nutrition, weight, side effects, and get personalized coaching.",
+  keywords: [
+    "GLP-1 tracker",
+    "Ozempic tracker",
+    "Wegovy app",
+    "Mounjaro tracker",
+    "Zepbound tracker",
+    "semaglutide tracker",
+    "tirzepatide tracker",
+    "GLP-1 weight loss app",
+    "GLP-1 AI coach",
+  ],
+  metadataBase: new URL("https://novurahealth.com"),
+  alternates: {
+    canonical: "/",
+  },
+  openGraph: {
+    title: "NovuraHealth — AI-Powered GLP-1 Medication Companion",
+    description:
+      "Track your Ozempic, Wegovy, Mounjaro, or Zepbound journey with an AI health coach. Log injections, nutrition, weight, side effects, and get personalized coaching.",
+    url: "https://novurahealth.com",
+    siteName: "NovuraHealth",
+    images: [
+      {
+        url: "/og-image.png",
+        width: 1200,
+        height: 630,
+        alt: "NovuraHealth",
+      },
+    ],
+    type: "website",
+  },
   icons: {
     icon: [
       { url: "/favicon.ico", sizes: "any" },
@@ -36,7 +69,10 @@ export default function RootLayout({
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        <StructuredData />
+        {children}
+      </body>
     </html>
   );
 }
