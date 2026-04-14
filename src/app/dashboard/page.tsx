@@ -3,9 +3,10 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '../lib/supabase'
+import FirstRunModal from '../components/FirstRunModal'
 
 // ── Types ──────────────────────────────────────────────
-interface Profile { name: string; medication: string; dose: string; start_date: string; current_weight: string; goal_weight: string; primary_goal: string; biggest_challenge: string; exercise_level: string }
+interface Profile { name: string; medication: string; dose: string; start_date: string; current_weight: string; goal_weight: string; primary_goal: string; biggest_challenge: string; exercise_level: string; first_run_complete?: boolean | null }
 interface MedLog { id: string; medication: string; dose: string; injection_site: string; notes: string; logged_at: string }
 interface WeightLog { id: string; weight: number; logged_at: string }
 interface SideEffectLog { id: string; symptom: string; severity: number; logged_at: string }
@@ -146,6 +147,7 @@ export default function Dashboard() {
   const [exerciseDuration, setExerciseDuration] = useState('')
   const [exerciseNotes, setExerciseNotes] = useState('')
   const [streak, setStreak] = useState(0)
+  const [showFirstRun, setShowFirstRun] = useState(false)
 
   const calculateStreak = useCallback((foods: FoodLog[]) => {
     const today = new Date(); today.setHours(0,0,0,0)
@@ -189,6 +191,7 @@ export default function Dashboard() {
       const { data: p } = await supabase.from('profiles').select('*').eq('id', user.id).single()
       if (!p) { router.push('/onboarding'); return }
       setProfile(p)
+      if (!p.first_run_complete) setShowFirstRun(true)
 
       const today = startOfDay(new Date())
       const monthAgo = addDays(today, -30)
@@ -372,6 +375,16 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen bg-[#FAFAF7] pb-20">
+      {showFirstRun && userId && profile && (
+        <FirstRunModal
+          userId={userId}
+          name={profile.name}
+          medication={profile.medication}
+          dose={profile.dose}
+          currentWeight={profile.current_weight}
+          onComplete={() => setShowFirstRun(false)}
+        />
+      )}
       {/* HEADER */}
       <header className="bg-[#2D5A3D] px-5 py-5">
         <div className="max-w-2xl mx-auto flex items-center justify-between">
