@@ -680,13 +680,13 @@ export default function Dashboard() {
             <div className="grid grid-cols-4 gap-2">{(['breakfast','lunch','dinner','snack'] as const).map(m => <button key={m} onClick={() => setMealType(m)} className={`text-xs py-2 rounded-lg border capitalize cursor-pointer ${mealType===m?'border-[#2D5A3D] bg-[#E8F0EB] text-[#2D5A3D] font-semibold':'border-[#EDEDEA] text-[#8B8B83]'}`}>{m}</button>)}</div>
             <div>
               <div className="flex gap-2">
-                <input type="text" value={foodName} onChange={e => setFoodName(e.target.value)} placeholder="e.g. 8 oz ribeye steak" className="flex-1 px-3 py-2.5 rounded-lg border border-[#EDEDEA] text-sm text-[#1E1E1C] outline-none focus:border-[#2D5A3D] placeholder:text-[#C5C5BE]"/>
+                <input type="text" autoComplete="off" value={foodName} onChange={e => setFoodName(e.target.value)} placeholder="e.g. 8 oz ribeye steak" className="flex-1 px-3 py-2.5 rounded-lg border border-[#EDEDEA] text-sm text-[#1E1E1C] outline-none focus:border-[#2D5A3D] placeholder:text-[#C5C5BE]"/>
                 <button type="button" onClick={calculateMacros} disabled={!foodName.trim()||isCalculating} className="bg-[#2D5A3D] text-white px-3 py-2.5 rounded-lg text-xs font-semibold cursor-pointer disabled:opacity-40 whitespace-nowrap">{isCalculating?'...':'⚡ Calc'}</button>
               </div>
               <p className="text-[10px] text-[#C5C5BE] mt-1">Include quantity for accuracy</p>
             </div>
             <div className="grid grid-cols-2 gap-2">
-              {[{l:'Calories',v:foodCalories,s:setFoodCalories,c:'#1E1E1C'},{l:'Protein (g)',v:foodProtein,s:setFoodProtein,c:'#2D5A3D'},{l:'Carbs (g)',v:foodCarbs,s:setFoodCarbs,c:'#C4742B'},{l:'Fat (g)',v:foodFat,s:setFoodFat,c:'#6B6B65'}].map(f => <div key={f.l}><label className="text-[9px] font-semibold uppercase tracking-wider" style={{color:f.c}}>{f.l}</label><input type="number" value={f.v} onChange={e=>f.s(e.target.value)} placeholder="0" className="w-full px-3 py-2 rounded-lg border border-[#EDEDEA] text-sm text-[#1E1E1C] outline-none focus:border-[#2D5A3D]"/></div>)}
+              {[{l:'Calories',v:foodCalories,s:setFoodCalories,c:'#1E1E1C'},{l:'Protein (g)',v:foodProtein,s:setFoodProtein,c:'#2D5A3D'},{l:'Carbs (g)',v:foodCarbs,s:setFoodCarbs,c:'#C4742B'},{l:'Fat (g)',v:foodFat,s:setFoodFat,c:'#6B6B65'}].map(f => <div key={f.l}><label className="text-[9px] font-semibold uppercase tracking-wider" style={{color:f.c}}>{f.l}</label><input type="number" autoComplete="off" value={f.v} onChange={e=>f.s(e.target.value)} placeholder="0" className="w-full px-3 py-2 rounded-lg border border-[#EDEDEA] text-sm text-[#1E1E1C] outline-none focus:border-[#2D5A3D]"/></div>)}
             </div>
             <button onClick={logFood} disabled={!foodName.trim()} className="w-full bg-[#2D5A3D] text-white py-3 rounded-lg text-sm font-semibold cursor-pointer disabled:opacity-30">Save</button>
           </div>
@@ -710,12 +710,12 @@ export default function Dashboard() {
                   className={`text-xs px-3 py-2 rounded-lg border cursor-pointer ${medDose === 'custom' ? 'border-[#2D5A3D] bg-[#E8F0EB] text-[#2D5A3D] font-semibold' : 'border-[#EDEDEA] text-[#8B8B83]'}`}>Custom</button>
               </div>
               {medDose === 'custom' && (
-                <input type="number" value={customDose} onChange={e => setCustomDose(e.target.value)} placeholder="Enter dose in mg" autoFocus
+                <input type="number" autoComplete="off" value={customDose} onChange={e => setCustomDose(e.target.value)} placeholder="Enter dose in mg" autoFocus
                   className="w-full mt-2 px-3 py-2.5 rounded-lg border border-[#EDEDEA] text-sm text-[#1E1E1C] outline-none focus:border-[#2D5A3D] placeholder:text-[#C5C5BE]"/>
               )}
             </div>
             <div><p className="text-[10px] font-semibold text-[#B0B0A8] uppercase tracking-wider mb-2">Injection Site</p><div className="grid grid-cols-2 gap-2">{INJECTION_SITES.map(s => <button key={s} onClick={() => setInjectionSite(s)} className={`text-xs px-3 py-2.5 rounded-lg border cursor-pointer ${injectionSite===s?'border-[#2D5A3D] bg-[#E8F0EB] text-[#2D5A3D] font-semibold':'border-[#EDEDEA] text-[#8B8B83]'}`}>{s}</button>)}</div></div>
-            <input type="text" value={medNotes} onChange={e => setMedNotes(e.target.value)} placeholder="Notes (optional)" className="w-full px-3 py-2.5 rounded-lg border border-[#EDEDEA] text-sm text-[#1E1E1C] outline-none focus:border-[#2D5A3D] placeholder:text-[#C5C5BE]"/>
+            <input type="text" autoComplete="off" value={medNotes} onChange={e => setMedNotes(e.target.value)} placeholder="Notes (optional)" className="w-full px-3 py-2.5 rounded-lg border border-[#EDEDEA] text-sm text-[#1E1E1C] outline-none focus:border-[#2D5A3D] placeholder:text-[#C5C5BE]"/>
             <button onClick={logMedication} className="w-full bg-[#2D5A3D] text-white py-3 rounded-lg text-sm font-semibold cursor-pointer">Save</button>
           </div>
         </div>
@@ -725,7 +725,7 @@ export default function Dashboard() {
         <div className="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center z-50 px-4 pb-4" onClick={e => { if (e.target === e.currentTarget) setModal(null) }}>
           <div className="bg-white rounded-2xl w-full max-w-md p-5 space-y-4 max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center"><h2 className="text-base font-bold text-[#1E1E1C]">Log Weight</h2><button onClick={() => setModal(null)} className="text-[#B0B0A8] hover:text-[#1E1E1C] cursor-pointer text-lg">✕</button></div>
-            <input type="number" value={newWeight} onChange={e => setNewWeight(e.target.value)} placeholder="Weight in pounds" autoFocus className="w-full px-4 py-4 rounded-lg border-2 border-[#EDEDEA] text-2xl text-center text-[#1E1E1C] font-bold outline-none focus:border-[#2D5A3D] placeholder:text-[#C5C5BE] placeholder:font-normal placeholder:text-base"/>
+            <input type="number" autoComplete="off" value={newWeight} onChange={e => setNewWeight(e.target.value)} placeholder="Weight in pounds" autoFocus className="w-full px-4 py-4 rounded-lg border-2 border-[#EDEDEA] text-2xl text-center text-[#1E1E1C] font-bold outline-none focus:border-[#2D5A3D] placeholder:text-[#C5C5BE] placeholder:font-normal placeholder:text-base"/>
             {latestWeight&&newWeight&&<p className={`text-center text-sm font-medium ${parseFloat(newWeight)<latestWeight?'text-[#2D5A3D]':parseFloat(newWeight)>latestWeight?'text-[#C4742B]':'text-[#8B8B83]'}`}>{parseFloat(newWeight)<latestWeight?`↓ ${(latestWeight-parseFloat(newWeight)).toFixed(1)} lbs`:parseFloat(newWeight)>latestWeight?`↑ ${(parseFloat(newWeight)-latestWeight).toFixed(1)} lbs`:'Same'}</p>}
             <button onClick={logWeightEntry} disabled={!newWeight} className="w-full bg-[#C4742B] text-white py-3 rounded-lg text-sm font-semibold cursor-pointer disabled:opacity-30">Save</button>
           </div>
@@ -749,7 +749,7 @@ export default function Dashboard() {
             <div className="flex justify-between items-center"><h2 className="text-base font-bold text-[#1E1E1C]">Daily Check-in</h2><button onClick={() => setModal(null)} className="text-[#B0B0A8] hover:text-[#1E1E1C] cursor-pointer text-lg">✕</button></div>
             <div><p className="text-[10px] font-semibold text-[#B0B0A8] uppercase tracking-wider mb-2">Mood</p><div className="flex gap-2">{MOOD_LABELS.map((l,i) => <button key={l} onClick={() => setCheckinMood(i+1)} className={`flex-1 py-2 rounded-lg text-[10px] font-semibold cursor-pointer ${checkinMood===i+1?'bg-[#2D5A3D] text-white':'bg-[#F5F5F2] text-[#8B8B83]'}`}>{l}</button>)}</div></div>
             <div><p className="text-[10px] font-semibold text-[#B0B0A8] uppercase tracking-wider mb-2">Energy</p><div className="flex gap-2">{ENERGY_LABELS.map((l,i) => <button key={l} onClick={() => setCheckinEnergy(i+1)} className={`flex-1 py-2 rounded-lg text-[10px] font-semibold cursor-pointer ${checkinEnergy===i+1?'bg-[#4A90D9] text-white':'bg-[#F5F5F2] text-[#8B8B83]'}`}>{l}</button>)}</div></div>
-            <input type="text" value={checkinNotes} onChange={e => setCheckinNotes(e.target.value)} placeholder="Notes (optional)" className="w-full px-3 py-2.5 rounded-lg border border-[#EDEDEA] text-sm text-[#1E1E1C] outline-none focus:border-[#2D5A3D] placeholder:text-[#C5C5BE]"/>
+            <input type="text" autoComplete="off" value={checkinNotes} onChange={e => setCheckinNotes(e.target.value)} placeholder="Notes (optional)" className="w-full px-3 py-2.5 rounded-lg border border-[#EDEDEA] text-sm text-[#1E1E1C] outline-none focus:border-[#2D5A3D] placeholder:text-[#C5C5BE]"/>
             <button onClick={logCheckin} className="w-full bg-[#2D5A3D] text-white py-3 rounded-lg text-sm font-semibold cursor-pointer">Save</button>
           </div>
         </div>
@@ -760,8 +760,8 @@ export default function Dashboard() {
           <div className="bg-white rounded-2xl w-full max-w-md p-5 space-y-4 max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center"><h2 className="text-base font-bold text-[#1E1E1C]">Log Exercise</h2><button onClick={() => setModal(null)} className="text-[#B0B0A8] hover:text-[#1E1E1C] cursor-pointer text-lg">✕</button></div>
             <div><p className="text-[10px] font-semibold text-[#B0B0A8] uppercase tracking-wider mb-2">Type</p><div className="flex flex-wrap gap-1.5">{EXERCISE_TYPES.map(t => <button key={t} onClick={() => setExerciseType(t)} className={`text-xs px-3 py-1.5 rounded-full border cursor-pointer ${exerciseType===t?'border-[#4A90D9] bg-[#E0EBF5] text-[#4A90D9] font-semibold':'border-[#EDEDEA] text-[#8B8B83]'}`}>{t}</button>)}</div></div>
-            <div><label className="text-[9px] font-semibold text-[#B0B0A8] uppercase tracking-wider">Minutes</label><input type="number" value={exerciseDuration} onChange={e => setExerciseDuration(e.target.value)} placeholder="30" className="w-full px-3 py-2.5 rounded-lg border border-[#EDEDEA] text-sm text-[#1E1E1C] outline-none focus:border-[#4A90D9]"/></div>
-            <input type="text" value={exerciseNotes} onChange={e => setExerciseNotes(e.target.value)} placeholder="Notes (optional)" className="w-full px-3 py-2.5 rounded-lg border border-[#EDEDEA] text-sm text-[#1E1E1C] outline-none placeholder:text-[#C5C5BE]"/>
+            <div><label className="text-[9px] font-semibold text-[#B0B0A8] uppercase tracking-wider">Minutes</label><input type="number" autoComplete="off" value={exerciseDuration} onChange={e => setExerciseDuration(e.target.value)} placeholder="30" className="w-full px-3 py-2.5 rounded-lg border border-[#EDEDEA] text-sm text-[#1E1E1C] outline-none focus:border-[#4A90D9]"/></div>
+            <input type="text" autoComplete="off" value={exerciseNotes} onChange={e => setExerciseNotes(e.target.value)} placeholder="Notes (optional)" className="w-full px-3 py-2.5 rounded-lg border border-[#EDEDEA] text-sm text-[#1E1E1C] outline-none placeholder:text-[#C5C5BE]"/>
             <button onClick={logExercise} disabled={!exerciseType||!exerciseDuration} className="w-full bg-[#4A90D9] text-white py-3 rounded-lg text-sm font-semibold cursor-pointer disabled:opacity-30">Save</button>
           </div>
         </div>

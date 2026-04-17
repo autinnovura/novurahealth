@@ -337,7 +337,7 @@ export default function Maintenance() {
           <div className="bg-white border border-[#EDEDEA] rounded-xl p-5 space-y-3">
             <h3 className="text-sm font-semibold text-[#1E1E1C]">Get a Recipe</h3>
             <div className="flex gap-2">
-              <input type="text" value={recipeInput} onChange={e => setRecipeInput(e.target.value)}
+              <input type="text" autoComplete="off" value={recipeInput} onChange={e => setRecipeInput(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && generateRecipe()}
                 placeholder="e.g. high-protein chicken stir fry"
                 className="flex-1 px-3 py-2.5 rounded-lg border border-[#EDEDEA] text-sm text-[#1E1E1C] outline-none focus:border-[#2D5A3D] placeholder:text-[#C5C5BE]"/>
@@ -482,7 +482,7 @@ export default function Maintenance() {
             </div>
 
             <div className="flex gap-2">
-              <input type="text" value={chatInput} onChange={e => setChatInput(e.target.value)}
+              <input type="text" autoComplete="off" value={chatInput} onChange={e => setChatInput(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && sendChat()}
                 placeholder="Ask Trish anything..." autoFocus
                 className="flex-1 px-4 py-3 rounded-xl border border-[#EDEDEA] bg-white text-sm text-[#1E1E1C] outline-none focus:border-[#2D5A3D] placeholder:text-[#C5C5BE]"/>

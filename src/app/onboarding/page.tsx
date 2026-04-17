@@ -207,7 +207,7 @@ export default function Onboarding() {
               <div>
                 <p className="text-xs text-[#B0B0A8] mb-1.5">{DOSES[medication]?.length > 0 ? 'Or enter custom dose' : 'Enter your dose'}</p>
                 <div className="flex items-center gap-2">
-                  <input type="number" value={customDose} onChange={e => { setCustomDose(e.target.value); setDose('custom') }}
+                  <input type="number" autoComplete="off" value={customDose} onChange={e => { setCustomDose(e.target.value); setDose('custom') }}
                     placeholder="0.0" step="0.1"
                     className="flex-1 px-4 py-3 rounded-xl border-2 border-[#EDEDEA] text-sm text-[#1E1E1C] outline-none focus:border-[#2D5A3D] placeholder:text-[#C5C5BE]" />
                   <span className="text-sm text-[#8B8B83] font-medium">mg</span>
@@ -236,7 +236,7 @@ export default function Onboarding() {
                 <div className="flex items-center gap-3">
                   <button onClick={() => setCurrentWeight(String(Math.max(80, (parseInt(currentWeight) || 200) - 1)))}
                     className="w-11 h-11 rounded-full bg-[#F5F5F2] text-[#6B6B65] flex items-center justify-center text-xl font-bold cursor-pointer hover:bg-[#EDEDEA] active:scale-95 transition-all">−</button>
-                  <input ref={weightRef} type="number" value={currentWeight} onChange={e => setCurrentWeight(e.target.value)}
+                  <input ref={weightRef} type="number" autoComplete="off" value={currentWeight} onChange={e => setCurrentWeight(e.target.value)}
                     placeholder="175"
                     className="flex-1 text-center px-4 py-3.5 rounded-xl border-2 border-[#EDEDEA] text-2xl font-bold text-[#1E1E1C] outline-none focus:border-[#2D5A3D] placeholder:text-[#C5C5BE] placeholder:font-normal placeholder:text-base" />
                   <button onClick={() => setCurrentWeight(String((parseInt(currentWeight) || 200) + 1))}
@@ -249,7 +249,7 @@ export default function Onboarding() {
                 <div className="flex items-center gap-3">
                   <button onClick={() => setGoalWeight(String(Math.max(80, (parseInt(goalWeight) || 160) - 1)))}
                     className="w-11 h-11 rounded-full bg-[#F5F5F2] text-[#6B6B65] flex items-center justify-center text-xl font-bold cursor-pointer hover:bg-[#EDEDEA] active:scale-95 transition-all">−</button>
-                  <input ref={goalRef} type="number" value={goalWeight} onChange={e => setGoalWeight(e.target.value)}
+                  <input ref={goalRef} type="number" autoComplete="off" value={goalWeight} onChange={e => setGoalWeight(e.target.value)}
                     placeholder="155"
                     className="flex-1 text-center px-4 py-3.5 rounded-xl border-2 border-[#EDEDEA] text-2xl font-bold text-[#1E1E1C] outline-none focus:border-[#2D5A3D] placeholder:text-[#C5C5BE] placeholder:font-normal placeholder:text-base" />
                   <button onClick={() => setGoalWeight(String((parseInt(goalWeight) || 160) + 1))}

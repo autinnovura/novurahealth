@@ -213,7 +213,7 @@ export default function Settings() {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="text-[10px] font-semibold text-[#B0B0A8] uppercase tracking-wider">Dose</label>
-                <input type="text" value={dose} onChange={e => setDose(e.target.value)} placeholder="e.g. 0.5mg"
+                <input type="text" autoComplete="off" value={dose} onChange={e => setDose(e.target.value)} placeholder="e.g. 0.5mg"
                   className="w-full mt-1 px-3 py-2.5 rounded-lg border border-[#EDEDEA] text-sm text-[#1E1E1C] outline-none focus:border-[#2D5A3D] placeholder:text-[#C5C5BE]"/>
               </div>
               <div>
@@ -248,12 +248,12 @@ export default function Settings() {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="text-[10px] font-semibold text-[#B0B0A8] uppercase tracking-wider">Current Weight (lbs)</label>
-                <input type="number" value={currentWeight} onChange={e => setCurrentWeight(e.target.value)}
+                <input type="number" autoComplete="off" value={currentWeight} onChange={e => setCurrentWeight(e.target.value)}
                   className="w-full mt-1 px-3 py-2.5 rounded-lg border border-[#EDEDEA] text-sm text-[#1E1E1C] outline-none focus:border-[#2D5A3D]"/>
               </div>
               <div>
                 <label className="text-[10px] font-semibold text-[#B0B0A8] uppercase tracking-wider">Goal Weight (lbs)</label>
-                <input type="number" value={goalWeight} onChange={e => setGoalWeight(e.target.value)}
+                <input type="number" autoComplete="off" value={goalWeight} onChange={e => setGoalWeight(e.target.value)}
                   className="w-full mt-1 px-3 py-2.5 rounded-lg border border-[#EDEDEA] text-sm text-[#1E1E1C] outline-none focus:border-[#2D5A3D]"/>
               </div>
             </div>
@@ -283,14 +283,14 @@ export default function Settings() {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="text-[10px] font-semibold text-[#B0B0A8] uppercase tracking-wider">Protein Target (g)</label>
-                <input type="number" value={proteinTargetG} onChange={e => setProteinTargetG(e.target.value)}
+                <input type="number" autoComplete="off" value={proteinTargetG} onChange={e => setProteinTargetG(e.target.value)}
                   placeholder={goalWeight ? String(Math.round((parseFloat(goalWeight) / 2.205) * 1.4)) : '100'}
                   className="w-full mt-1 px-3 py-2.5 rounded-lg border border-[#EDEDEA] text-sm text-[#1E1E1C] outline-none focus:border-[#2D5A3D] placeholder:text-[#C5C5BE]"/>
                 <p className="text-[9px] text-[#B0B0A8] mt-1">Leave blank to auto-calculate</p>
               </div>
               <div>
                 <label className="text-[10px] font-semibold text-[#B0B0A8] uppercase tracking-wider">Water Target (oz)</label>
-                <input type="number" value={waterTargetOz} onChange={e => setWaterTargetOz(e.target.value)}
+                <input type="number" autoComplete="off" value={waterTargetOz} onChange={e => setWaterTargetOz(e.target.value)}
                   placeholder="80"
                   className="w-full mt-1 px-3 py-2.5 rounded-lg border border-[#EDEDEA] text-sm text-[#1E1E1C] outline-none focus:border-[#2D5A3D] placeholder:text-[#C5C5BE]"/>
                 <p className="text-[9px] text-[#B0B0A8] mt-1">Default: 80 oz</p>
@@ -376,7 +376,7 @@ export default function Settings() {
             ) : (
               <div className="space-y-3">
                 <p className="text-xs text-red-600">This action cannot be undone. Type <strong>DELETE</strong> to confirm.</p>
-                <input type="text" value={deleteText} onChange={e => setDeleteText(e.target.value)} placeholder="Type DELETE"
+                <input type="text" autoComplete="off" value={deleteText} onChange={e => setDeleteText(e.target.value)} placeholder="Type DELETE"
                   className="w-full px-3 py-2.5 rounded-lg border border-red-200 text-sm text-[#1E1E1C] outline-none focus:border-red-400 placeholder:text-[#C5C5BE]"/>
                 <div className="flex gap-2">
                   <button onClick={() => { setShowDeleteConfirm(false); setDeleteText('') }}

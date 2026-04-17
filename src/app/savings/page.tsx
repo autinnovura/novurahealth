@@ -475,7 +475,7 @@ export default function Savings() {
             </div>
 
             <div className="flex gap-2">
-              <input type="text" value={chatInput} onChange={e => setChatInput(e.target.value)}
+              <input type="text" autoComplete="off" value={chatInput} onChange={e => setChatInput(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && sendChat()}
                 placeholder="Ask about savings, insurance, appeals..."
                 className="flex-1 px-4 py-3 rounded-xl border border-[#EDEDEA] bg-white text-sm text-[#1E1E1C] outline-none focus:border-[#2D5A3D] placeholder:text-[#C5C5BE]" />
@@ -497,7 +497,7 @@ export default function Savings() {
             </div>
             <div>
               <label className="text-[10px] font-semibold text-[#B0B0A8] uppercase tracking-wider">What do you pay per month? ($)</label>
-              <input type="number" value={monthlyCost} onChange={e => setMonthlyCost(e.target.value)} placeholder="e.g. 250"
+              <input type="number" autoComplete="off" value={monthlyCost} onChange={e => setMonthlyCost(e.target.value)} placeholder="e.g. 250"
                 className="w-full mt-1 px-3 py-2.5 rounded-lg border border-[#EDEDEA] text-[16px] text-[#1E1E1C] outline-none focus:border-[#2D5A3D]" />
             </div>
             <div>
