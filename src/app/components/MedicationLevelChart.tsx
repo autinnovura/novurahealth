@@ -151,12 +151,7 @@ export default function MedicationLevelChart({ medication, dose, injectionLogs }
         .sort((a, b) => a.time - b.time)
     }
 
-    const times = []
-    const weeksBack = Math.ceil(rangeHours / 168) + 4
-    for (let i = weeksBack; i >= 0; i--) {
-      times.push({ time: now - i * pk.dosingIntervalHours * 3600 * 1000, dose: currentDoseMg })
-    }
-    return times
+    return []
   }, [injectionLogs, timeRange, currentDoseMg, pk.dosingIntervalHours])
 
   // The chart shows past + future. "Now" sits at ~75% of the x-axis so you
