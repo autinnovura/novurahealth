@@ -10,99 +10,28 @@ type Phase = 'exploring' | 'preparing' | 'tapering' | 'maintenance' | 'off_medic
 interface TaperPlan {
   id: string; phase: Phase; current_dose: string; target_dose: string
   taper_start_date: string; last_dose_change: string; stability_streak_days: number
-  readiness_score: number; notes: string
+  readiness_score: number; notes: string; readiness_answers?: Record<string, boolean>
 }
 
-interface TaperCheckin {
-  id: string; phase: string; weight: number; cravings: number; hunger: number
-  confidence: number; habits_maintained: string[]; notes: string; logged_at: string
-}
+interface ChatMsg { role: 'user' | 'assistant'; content: string }
 
-interface ChatMsg { role: 'user' | 'nova'; content: string }
-
-const PHASES: { id: Phase; label: string; icon: string; short: string }[] = [
-  { id: 'exploring', label: 'Exploring', icon: '🔍', short: 'Learn' },
-  { id: 'preparing', label: 'Preparing', icon: '📋', short: 'Prep' },
-  { id: 'tapering', label: 'Tapering', icon: '📉', short: 'Taper' },
-  { id: 'maintenance', label: 'Maintenance', icon: '⚖️', short: 'Maintain' },
-  { id: 'off_medication', label: 'Off Medication', icon: '🎉', short: 'Free' },
+const PHASES: { id: Phase; label: string; short: string }[] = [
+  { id: 'exploring', label: 'Exploring', short: 'Explore' },
+  { id: 'preparing', label: 'Preparing', short: 'Prep' },
+  { id: 'tapering', label: 'Tapering', short: 'Taper' },
+  { id: 'maintenance', label: 'Maintenance', short: 'Maintain' },
+  { id: 'off_medication', label: 'Off Medication', short: 'Free' },
 ]
 
-const HABITS = [
-  'Hit protein target', 'Drank 80oz+ water', 'Exercised 30+ min',
-  'Slept 7+ hours', 'Tracked all meals', 'Managed stress',
-]
-
-const PHASE_INFO: Record<Phase, { title: string; desc: string; tips: string[] }> = {
-  exploring: {
-    title: "Thinking About Tapering?",
-    desc: "It's smart to research before making changes. Most people succeed when they build strong habits before reducing their dose.",
-    tips: [
-      "Talk to your prescribing doctor about your interest in tapering",
-      "Build consistent protein habits (0.8g per lb of goal weight daily)",
-      "Establish a regular exercise routine, especially resistance training",
-      "Track your habits for 4+ weeks to build a baseline",
-      "Weight should be stable for at least 1 month before considering tapering",
-    ],
-  },
-  preparing: {
-    title: "Getting Ready to Taper",
-    desc: "You've decided to work toward tapering. Now it's about building the foundation that will support you without medication.",
-    tips: [
-      "Confirm your taper plan with your doctor",
-      "Ensure you're consistently hitting protein targets",
-      "Exercise at least 3-4x per week including resistance training",
-      "Practice mindful eating — eat slowly, stop at 80% full",
-      "Build a support system (friends, family, or community)",
-      "Stock your kitchen with high-protein, whole food staples",
-    ],
-  },
-  tapering: {
-    title: "Actively Tapering",
-    desc: "You're reducing your dose. This is a gradual process — patience is key. Monitor your weight and hunger closely.",
-    tips: [
-      "Reduce dose by one step every 4-8 weeks (as directed by doctor)",
-      "Weigh yourself daily at the same time — look at weekly averages, not daily fluctuations",
-      "Expect some increase in appetite — this is normal",
-      "If you gain more than 3-5 lbs, talk to your doctor about pausing the taper",
-      "Keep protein and exercise habits locked in — these are your anchors",
-      "Log hunger and cravings daily to spot trends early",
-    ],
-  },
-  maintenance: {
-    title: "Maintenance Mode",
-    desc: "You're on a minimal dose or have recently stopped. Focus on weight stability and reinforcing the habits that got you here.",
-    tips: [
-      "Stay within 3-5 lbs of your goal weight",
-      "Continue tracking food and protein for at least 6 months",
-      "Don't skip exercise — it's your most powerful maintenance tool",
-      "If you see 3+ lbs of regain over 2 weeks, take action immediately",
-      "Monthly check-ins with your doctor for the first year off medication",
-      "It's okay to go back on medication if needed — this isn't failure",
-    ],
-  },
-  off_medication: {
-    title: "Living Without GLP-1",
-    desc: "You did it. The habits you've built are now carrying you. Stay vigilant, stay consistent, and be proud of how far you've come.",
-    tips: [
-      "Keep weighing yourself regularly — awareness prevents creep",
-      "Maintain your protein and exercise routines",
-      "Have a plan for holidays, travel, and stressful periods",
-      "If you regain 5+ lbs, don't wait — reassess your habits or talk to your doctor",
-      "Remember: maintenance is a lifelong practice, not a destination",
-    ],
-  },
-}
-
-const READINESS_QUESTIONS = [
-  { q: "I consistently hit my daily protein target", key: "protein" },
-  { q: "I exercise at least 3 times per week", key: "exercise" },
-  { q: "My weight has been stable for 4+ weeks", key: "stable" },
-  { q: "I track my food regularly", key: "tracking" },
-  { q: "I've discussed tapering with my doctor", key: "doctor" },
-  { q: "I feel confident managing hunger without medication", key: "hunger" },
-  { q: "I get 7+ hours of sleep most nights", key: "sleep" },
-  { q: "I have strategies for emotional/stress eating", key: "stress" },
+const READINESS_ITEMS = [
+  'Weight stable 4+ weeks',
+  'Hitting protein target consistently',
+  'Exercising 3+ times per week',
+  'Sleeping 7+ hours consistently',
+  'Managing stress without food',
+  'Comfortable cooking healthy meals',
+  'Doctor aware of tapering intent',
+  'Support system in place',
 ]
 
 export default function Maintenance() {
@@ -110,24 +39,31 @@ export default function Maintenance() {
   const [userId, setUserId] = useState<string | null>(null)
   const [profile, setProfile] = useState<any>(null)
   const [plan, setPlan] = useState<TaperPlan | null>(null)
-  const [checkins, setCheckins] = useState<TaperCheckin[]>([])
   const [loading, setLoading] = useState(true)
-  const [activeView, setActiveView] = useState<'plan' | 'checkin' | 'chat'>('plan')
+  const [activeTab, setActiveTab] = useState<'plan' | 'nutrition' | 'exercise' | 'coach'>('plan')
 
-  // Readiness assessment
-  const [readinessAnswers, setReadinessAnswers] = useState<Record<string, boolean>>({})
-  const [showReadiness, setShowReadiness] = useState(false)
+  // Readiness checkboxes
+  const [readiness, setReadiness] = useState<Record<string, boolean>>({})
 
-  // Check-in form
-  const [ciWeight, setCiWeight] = useState('')
-  const [ciCravings, setCiCravings] = useState(3)
-  const [ciHunger, setCiHunger] = useState(3)
-  const [ciConfidence, setCiConfidence] = useState(3)
-  const [ciHabits, setCiHabits] = useState<string[]>([])
-  const [ciNotes, setCiNotes] = useState('')
-  const [savingCheckin, setSavingCheckin] = useState(false)
+  // Generated content
+  const [taperPlan, setTaperPlan] = useState('')
+  const [mealPlan, setMealPlan] = useState('')
+  const [exercisePlan, setExercisePlan] = useState('')
+  const [generating, setGenerating] = useState<string | null>(null)
 
-  // Chat
+  // Nutrition tab
+  const [mealPlanType, setMealPlanType] = useState<'daily' | 'weekly'>('daily')
+  const [recipeInput, setRecipeInput] = useState('')
+
+  // Exercise tab
+  const [fitnessLevel, setFitnessLevel] = useState('Intermediate')
+  const [equipment, setEquipment] = useState('Dumbbells')
+
+  // Saved plans (localStorage)
+  const [savedMealPlans, setSavedMealPlans] = useState<string[]>([])
+  const [showSaved, setShowSaved] = useState(false)
+
+  // Coach chat
   const [chatMessages, setChatMessages] = useState<ChatMsg[]>([])
   const [chatInput, setChatInput] = useState('')
   const [chatLoading, setChatLoading] = useState(false)
@@ -144,10 +80,16 @@ export default function Maintenance() {
       setProfile(p)
 
       const { data: tp } = await supabase.from('tapering_plans').select('*').eq('user_id', user.id).single()
-      if (tp) setPlan(tp)
+      if (tp) {
+        setPlan(tp)
+        if (tp.readiness_answers) setReadiness(tp.readiness_answers)
+      }
 
-      const { data: tc } = await supabase.from('tapering_checkins').select('*').eq('user_id', user.id).order('logged_at', { ascending: false }).limit(14)
-      setCheckins(tc || [])
+      // Load saved meal plans from localStorage
+      try {
+        const saved = localStorage.getItem('novura_saved_meals')
+        if (saved) setSavedMealPlans(JSON.parse(saved))
+      } catch { /* ignore */ }
 
       setLoading(false)
     }
@@ -158,82 +100,116 @@ export default function Maintenance() {
     chatRef.current?.scrollTo({ top: chatRef.current.scrollHeight, behavior: 'smooth' })
   }, [chatMessages, chatLoading])
 
-  async function createOrUpdatePlan(phase: Phase) {
+  // ── Coach API ─────────────────────────────────────────
+  async function sendToCoach(prompt: string, displayAsChat = true): Promise<string> {
+    if (!userId) return ''
+
+    const msgs = displayAsChat
+      ? [...chatMessages.map(m => ({ role: m.role, content: m.content })), { role: 'user' as const, content: prompt }]
+      : [{ role: 'user' as const, content: prompt }]
+
+    const res = await fetch('/api/transition-coach', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messages: msgs, userId }),
+    })
+    const { message } = await res.json()
+    return message || 'Unable to generate plan. Try again.'
+  }
+
+  // ── Generators ────────────────────────────────────────
+  async function generateTaperPlan() {
+    setGenerating('taper')
+    const result = await sendToCoach('Generate my complete tapering plan based on all my data. Include specific phases, timelines, and targets.', false)
+    setTaperPlan(result)
+    setGenerating(null)
+  }
+
+  async function generateMealPlan() {
+    setGenerating('meal')
+    const prompt = mealPlanType === 'weekly'
+      ? 'Create a complete weekly meal plan for me. 7 days. Hit my protein target each day. Use foods I actually eat based on my food logs.'
+      : 'Create a complete daily meal plan for me. Breakfast, lunch, snack, dinner. Hit my protein target. Use foods I actually eat.'
+    const result = await sendToCoach(prompt, false)
+    setMealPlan(result)
+    // Save to localStorage (keep last 3)
+    const updated = [result, ...savedMealPlans].slice(0, 3)
+    setSavedMealPlans(updated)
+    try { localStorage.setItem('novura_saved_meals', JSON.stringify(updated)) } catch { /* ignore */ }
+    setGenerating(null)
+  }
+
+  async function generateRecipe() {
+    if (!recipeInput.trim()) return
+    setGenerating('recipe')
+    const result = await sendToCoach(`Give me a recipe for ${recipeInput}. Include ingredients, steps, prep time, and macros per serving.`, false)
+    setMealPlan(result)
+    setRecipeInput('')
+    setGenerating(null)
+  }
+
+  async function generateExercisePlan() {
+    setGenerating('exercise')
+    const result = await sendToCoach(`Create a complete weekly exercise plan for me. My fitness level is ${fitnessLevel}. Equipment available: ${equipment}. Include specific exercises, sets, and reps for each day.`, false)
+    setExercisePlan(result)
+    setGenerating(null)
+  }
+
+  // ── PDF Export ────────────────────────────────────────
+  async function downloadPDF(type: 'taper' | 'meal' | 'exercise', content: string) {
+    const res = await fetch('/api/generate-pdf', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type, content, userName: profile?.name || '' }),
+    })
+    const html = await res.text()
+    const w = window.open('', '_blank')
+    if (w) { w.document.write(html); w.document.close() }
+  }
+
+  // ── Readiness Save ────────────────────────────────────
+  async function saveReadiness() {
     if (!userId) return
-    const payload = { user_id: userId, phase, current_dose: profile?.dose || '', updated_at: new Date().toISOString() }
+    const score = Math.round((Object.values(readiness).filter(Boolean).length / READINESS_ITEMS.length) * 100)
+    const payload = { readiness_score: score, readiness_answers: readiness, updated_at: new Date().toISOString() }
+    if (plan) {
+      const { data } = await supabase.from('tapering_plans').update(payload).eq('id', plan.id).select().single()
+      if (data) setPlan(data)
+    } else {
+      const { data } = await supabase.from('tapering_plans').insert({ user_id: userId, phase: 'exploring', ...payload }).select().single()
+      if (data) setPlan(data)
+    }
+  }
+
+  async function setPhase(phase: Phase) {
+    if (!userId) return
     if (plan) {
       const { data } = await supabase.from('tapering_plans').update({ phase, updated_at: new Date().toISOString() }).eq('id', plan.id).select().single()
       if (data) setPlan(data)
     } else {
-      const { data } = await supabase.from('tapering_plans').insert(payload).select().single()
+      const { data } = await supabase.from('tapering_plans').insert({ user_id: userId, phase }).select().single()
       if (data) setPlan(data)
     }
   }
 
-  async function saveReadiness() {
-    const score = Math.round((Object.values(readinessAnswers).filter(Boolean).length / READINESS_QUESTIONS.length) * 100)
-    if (!userId) return
-    if (plan) {
-      const { data } = await supabase.from('tapering_plans').update({ readiness_score: score, updated_at: new Date().toISOString() }).eq('id', plan.id).select().single()
-      if (data) setPlan(data)
-    } else {
-      const { data } = await supabase.from('tapering_plans').insert({ user_id: userId, phase: 'exploring', readiness_score: score }).select().single()
-      if (data) setPlan(data)
-    }
-    setShowReadiness(false)
-  }
-
-  async function submitCheckin() {
-    if (!userId) return
-    setSavingCheckin(true)
-    const { data } = await supabase.from('tapering_checkins').insert({
-      user_id: userId, phase: plan?.phase || 'exploring',
-      weight: parseFloat(ciWeight) || null, cravings: ciCravings,
-      hunger: ciHunger, confidence: ciConfidence,
-      habits_maintained: ciHabits, notes: ciNotes,
-    }).select().single()
-    if (data) setCheckins([data, ...checkins])
-    setCiWeight(''); setCiCravings(3); setCiHunger(3); setCiConfidence(3); setCiHabits([]); setCiNotes('')
-    setSavingCheckin(false)
-    setActiveView('plan')
-  }
-
-  async function sendChat() {
-    if (!chatInput.trim()) return
-    const userMsg = chatInput.trim()
-    setChatMessages(prev => [...prev, { role: 'user', content: userMsg }])
+  // ── Chat ──────────────────────────────────────────────
+  async function sendChat(msg?: string) {
+    const text = msg || chatInput.trim()
+    if (!text) return
+    setChatMessages(prev => [...prev, { role: 'user', content: text }])
     setChatInput('')
     setChatLoading(true)
-
-    try {
-      const weightTrend = checkins.length >= 2
-        ? `${checkins[0]?.weight || '?'} lbs (latest) vs ${checkins[checkins.length - 1]?.weight || '?'} lbs (oldest)`
-        : null
-
-      const res = await fetch('/api/maintenance-chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: userMsg, profile, plan,
-          recentCheckins: checkins.slice(0, 5), weightTrend,
-        }),
-      })
-      const { message } = await res.json()
-      setChatMessages(prev => [...prev, { role: 'nova', content: message }])
-    } catch {
-      setChatMessages(prev => [...prev, { role: 'nova', content: "Having trouble connecting. Try again in a sec." }])
-    }
+    const reply = await sendToCoach(text, true)
+    setChatMessages(prev => [...prev, { role: 'assistant', content: reply }])
     setChatLoading(false)
   }
 
   if (loading) return <div className="min-h-screen bg-[#FAFAF7] flex items-center justify-center"><div className="w-7 h-7 border-2 border-[#2D5A3D] border-t-transparent rounded-full animate-spin"/></div>
 
   const phase = plan?.phase || 'exploring'
-  const phaseInfo = PHASE_INFO[phase]
   const phaseIdx = PHASES.findIndex(p => p.id === phase)
   const readinessScore = plan?.readiness_score ?? null
-  const avgHunger = checkins.length > 0 ? Math.round(checkins.slice(0, 7).reduce((s, c) => s + (c.hunger || 3), 0) / Math.min(checkins.length, 7) * 10) / 10 : null
-  const avgCravings = checkins.length > 0 ? Math.round(checkins.slice(0, 7).reduce((s, c) => s + (c.cravings || 3), 0) / Math.min(checkins.length, 7) * 10) / 10 : null
+  const checkedCount = Object.values(readiness).filter(Boolean).length
 
   return (
     <div className="min-h-screen bg-[#FAFAF7] pb-20">
@@ -243,294 +219,233 @@ export default function Maintenance() {
           <div className="flex items-center justify-between mb-4">
             <div>
               <h1 className="text-white font-semibold text-lg tracking-tight">Transition Plan</h1>
-              <p className="text-white/40 text-xs mt-0.5">Your path off GLP-1 medication</p>
+              <p className="text-white/40 text-xs mt-0.5">{profile?.medication} · {profile?.dose}</p>
             </div>
             <button onClick={() => router.push('/dashboard')} className="text-white/40 text-xs hover:text-white/70 cursor-pointer transition-colors">← Dashboard</button>
           </div>
-
           {/* Phase pipeline */}
           <div className="flex items-center gap-1">
             {PHASES.map((p, i) => (
-              <div key={p.id} className="flex-1 flex flex-col items-center">
-                <div className={`w-full h-1.5 rounded-full mb-2 ${i <= phaseIdx ? 'bg-white/80' : 'bg-white/15'}`} />
+              <button key={p.id} onClick={() => setPhase(p.id)} className="flex-1 flex flex-col items-center cursor-pointer">
+                <div className={`w-full h-1.5 rounded-full mb-2 transition-colors ${i <= phaseIdx ? 'bg-white/80' : 'bg-white/15'}`} />
                 <span className={`text-[9px] font-semibold ${i <= phaseIdx ? 'text-white' : 'text-white/30'}`}>{p.short}</span>
-              </div>
+              </button>
             ))}
           </div>
         </div>
       </header>
 
-      {/* View tabs */}
+      {/* Tabs */}
       <div className="bg-white border-b border-[#E8E8E4] sticky top-0 z-40">
         <div className="max-w-2xl mx-auto flex">
           {([
-            { id: 'plan' as const, label: 'Plan' },
-            { id: 'checkin' as const, label: 'Check-in' },
-            { id: 'chat' as const, label: 'Ask Nova' },
+            { id: 'plan' as const, label: 'My Plan' },
+            { id: 'nutrition' as const, label: 'Nutrition' },
+            { id: 'exercise' as const, label: 'Exercise' },
+            { id: 'coach' as const, label: 'Coach' },
           ]).map(tab => (
-            <button key={tab.id} onClick={() => setActiveView(tab.id)}
-              className={`flex-1 py-3 text-xs font-semibold uppercase tracking-wider transition-colors cursor-pointer ${activeView === tab.id ? 'text-[#2D5A3D] border-b-2 border-[#2D5A3D]' : 'text-[#B0B0A8] hover:text-[#6B6B65]'}`}>{tab.label}</button>
+            <button key={tab.id} onClick={() => setActiveTab(tab.id)}
+              className={`flex-1 py-3 text-xs font-semibold uppercase tracking-wider transition-colors cursor-pointer ${activeTab === tab.id ? 'text-[#2D5A3D] border-b-2 border-[#2D5A3D]' : 'text-[#B0B0A8] hover:text-[#6B6B65]'}`}>{tab.label}</button>
           ))}
         </div>
       </div>
 
       <div className="max-w-2xl mx-auto px-4 py-5 space-y-4">
 
-        {/* ══════════ PLAN VIEW ══════════ */}
-        {activeView === 'plan' && (<>
-          {/* Current phase card */}
+        {/* ═══ MY PLAN TAB ═══ */}
+        {activeTab === 'plan' && (<>
+          {/* Current status */}
           <div className="bg-white border border-[#EDEDEA] rounded-xl p-5">
-            <div className="flex items-start gap-3 mb-4">
-              <div className="w-12 h-12 rounded-xl bg-[#E8F0EB] flex items-center justify-center text-2xl shrink-0">{PHASES[phaseIdx].icon}</div>
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-xl bg-[#E8F0EB] flex items-center justify-center text-xl shrink-0">📋</div>
               <div>
-                <h2 className="text-base font-bold text-[#1E1E1C]">{phaseInfo.title}</h2>
-                <p className="text-xs text-[#8B8B83] mt-1 leading-relaxed">{phaseInfo.desc}</p>
+                <h2 className="text-sm font-bold text-[#1E1E1C]">{PHASES[phaseIdx].label} Phase</h2>
+                <p className="text-xs text-[#8B8B83]">{profile?.medication} · {profile?.dose} · {profile?.start_date ? `since ${new Date(profile.start_date).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}` : ''}</p>
               </div>
             </div>
+            <div className="grid grid-cols-3 gap-2">
+              <div className="bg-[#F5F5F2] rounded-lg p-3 text-center">
+                <p className="text-lg font-bold text-[#1E1E1C]">{plan?.stability_streak_days || 0}</p>
+                <p className="text-[9px] text-[#B0B0A8]">stable days</p>
+              </div>
+              <div className="bg-[#F5F5F2] rounded-lg p-3 text-center">
+                <p className="text-lg font-bold text-[#1E1E1C]">{readinessScore !== null ? `${readinessScore}%` : '—'}</p>
+                <p className="text-[9px] text-[#B0B0A8]">readiness</p>
+              </div>
+              <div className="bg-[#F5F5F2] rounded-lg p-3 text-center">
+                <p className="text-lg font-bold text-[#1E1E1C]">{checkedCount}/8</p>
+                <p className="text-[9px] text-[#B0B0A8]">habits</p>
+              </div>
+            </div>
+          </div>
 
-            {/* Phase selector */}
-            <div className="flex gap-2 mb-4">
-              {PHASES.map(p => (
-                <button key={p.id} onClick={() => createOrUpdatePlan(p.id)}
-                  className={`flex-1 py-2 rounded-lg text-[10px] font-semibold cursor-pointer transition-all ${phase === p.id ? 'bg-[#2D5A3D] text-white' : 'bg-[#F5F5F2] text-[#8B8B83] hover:text-[#6B6B65]'}`}>
-                  {p.icon} {p.short}
+          {/* Readiness checklist */}
+          <div className="bg-white border border-[#EDEDEA] rounded-xl p-5">
+            <h3 className="text-sm font-semibold text-[#1E1E1C] mb-3">Readiness Checklist</h3>
+            <div className="space-y-2">
+              {READINESS_ITEMS.map((item, i) => (
+                <button key={i} onClick={() => { const updated = { ...readiness, [item]: !readiness[item] }; setReadiness(updated) }}
+                  className={`w-full flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all text-left ${readiness[item] ? 'border-[#2D5A3D] bg-[#E8F0EB]' : 'border-[#EDEDEA] hover:border-[#B0B0A8]'}`}>
+                  <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center shrink-0 ${readiness[item] ? 'border-[#2D5A3D] bg-[#2D5A3D]' : 'border-[#D0D0CA]'}`}>
+                    {readiness[item] && <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" d="M5 13l4 4L19 7"/></svg>}
+                  </div>
+                  <span className="text-sm text-[#1E1E1C]">{item}</span>
                 </button>
               ))}
             </div>
-
-            {/* Quick stats */}
-            {plan && (
-              <div className="grid grid-cols-3 gap-2">
-                <div className="bg-[#F5F5F2] rounded-lg p-3 text-center">
-                  <p className="text-lg font-bold text-[#1E1E1C]">{plan.stability_streak_days || 0}</p>
-                  <p className="text-[9px] text-[#B0B0A8]">stability days</p>
-                </div>
-                <div className="bg-[#F5F5F2] rounded-lg p-3 text-center">
-                  <p className="text-lg font-bold text-[#1E1E1C]">{readinessScore !== null ? `${readinessScore}%` : '—'}</p>
-                  <p className="text-[9px] text-[#B0B0A8]">readiness</p>
-                </div>
-                <div className="bg-[#F5F5F2] rounded-lg p-3 text-center">
-                  <p className="text-lg font-bold text-[#1E1E1C]">{checkins.length}</p>
-                  <p className="text-[9px] text-[#B0B0A8]">check-ins</p>
-                </div>
-              </div>
-            )}
+            <button onClick={saveReadiness} className="w-full mt-3 bg-[#F5F5F2] text-[#2D5A3D] py-2.5 rounded-lg text-xs font-semibold cursor-pointer hover:bg-[#E8F0EB] transition-colors">
+              Save ({Math.round((checkedCount / READINESS_ITEMS.length) * 100)}% ready)
+            </button>
           </div>
 
-          {/* Readiness assessment */}
-          {(phase === 'exploring' || phase === 'preparing') && (
+          {/* Generate tapering plan */}
+          <button onClick={generateTaperPlan} disabled={generating === 'taper'}
+            className="w-full bg-[#2D5A3D] text-white py-4 rounded-xl text-sm font-semibold cursor-pointer hover:bg-[#3A7A52] transition-colors disabled:opacity-50">
+            {generating === 'taper' ? 'Generating...' : 'Generate My Tapering Plan'}
+          </button>
+
+          {/* Generated plan display */}
+          {taperPlan && (
             <div className="bg-white border border-[#EDEDEA] rounded-xl p-5">
               <div className="flex justify-between items-center mb-3">
-                <h3 className="text-sm font-semibold text-[#1E1E1C]">Readiness Assessment</h3>
-                {readinessScore !== null && !showReadiness && (
-                  <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${readinessScore >= 75 ? 'bg-[#E8F0EB] text-[#2D5A3D]' : readinessScore >= 50 ? 'bg-[#FFF0E5] text-[#C4742B]' : 'bg-[#F5F5F2] text-[#8B8B83]'}`}>
-                    {readinessScore}% ready
-                  </span>
-                )}
+                <h3 className="text-sm font-semibold text-[#1E1E1C]">Your Tapering Plan</h3>
+                <button onClick={() => downloadPDF('taper', taperPlan)} className="text-xs text-[#2D5A3D] font-semibold cursor-pointer hover:underline">Download PDF</button>
               </div>
+              <div className="text-sm text-[#444] leading-relaxed whitespace-pre-wrap">{taperPlan}</div>
+            </div>
+          )}
+        </>)}
 
-              {showReadiness ? (
-                <div className="space-y-3">
-                  {READINESS_QUESTIONS.map(rq => (
-                    <button key={rq.key} onClick={() => setReadinessAnswers(prev => ({ ...prev, [rq.key]: !prev[rq.key] }))}
-                      className={`w-full flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all text-left ${readinessAnswers[rq.key] ? 'border-[#2D5A3D] bg-[#E8F0EB]' : 'border-[#EDEDEA] hover:border-[#B0B0A8]'}`}>
-                      <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center shrink-0 ${readinessAnswers[rq.key] ? 'border-[#2D5A3D] bg-[#2D5A3D]' : 'border-[#EDEDEA]'}`}>
-                        {readinessAnswers[rq.key] && <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" d="M5 13l4 4L19 7"/></svg>}
+        {/* ═══ NUTRITION TAB ═══ */}
+        {activeTab === 'nutrition' && (<>
+          {/* Meal plan generator */}
+          <div className="bg-white border border-[#EDEDEA] rounded-xl p-5 space-y-3">
+            <h3 className="text-sm font-semibold text-[#1E1E1C]">Generate Meal Plan</h3>
+            <div className="flex gap-2">
+              {(['daily', 'weekly'] as const).map(t => (
+                <button key={t} onClick={() => setMealPlanType(t)}
+                  className={`flex-1 py-2 rounded-lg text-xs font-semibold capitalize cursor-pointer transition-colors ${mealPlanType === t ? 'bg-[#2D5A3D] text-white' : 'bg-[#F5F5F2] text-[#8B8B83]'}`}>{t}</button>
+              ))}
+            </div>
+            <button onClick={generateMealPlan} disabled={generating === 'meal'}
+              className="w-full bg-[#2D5A3D] text-white py-3 rounded-xl text-sm font-semibold cursor-pointer disabled:opacity-50">
+              {generating === 'meal' ? 'Generating...' : `Generate ${mealPlanType} meal plan`}
+            </button>
+          </div>
+
+          {/* Recipe generator */}
+          <div className="bg-white border border-[#EDEDEA] rounded-xl p-5 space-y-3">
+            <h3 className="text-sm font-semibold text-[#1E1E1C]">Get a Recipe</h3>
+            <div className="flex gap-2">
+              <input type="text" value={recipeInput} onChange={e => setRecipeInput(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && generateRecipe()}
+                placeholder="e.g. high-protein chicken stir fry"
+                className="flex-1 px-3 py-2.5 rounded-lg border border-[#EDEDEA] text-sm text-[#1E1E1C] outline-none focus:border-[#2D5A3D] placeholder:text-[#C5C5BE]"/>
+              <button onClick={generateRecipe} disabled={generating === 'recipe' || !recipeInput.trim()}
+                className="bg-[#2D5A3D] text-white px-4 py-2.5 rounded-lg text-xs font-semibold cursor-pointer disabled:opacity-40">
+                {generating === 'recipe' ? '...' : 'Go'}
+              </button>
+            </div>
+          </div>
+
+          {/* Generated plan */}
+          {mealPlan && (
+            <div className="bg-white border border-[#EDEDEA] rounded-xl p-5">
+              <div className="flex justify-between items-center mb-3">
+                <h3 className="text-sm font-semibold text-[#1E1E1C]">Your Plan</h3>
+                <button onClick={() => downloadPDF('meal', mealPlan)} className="text-xs text-[#2D5A3D] font-semibold cursor-pointer hover:underline">Download PDF</button>
+              </div>
+              <div className="text-sm text-[#444] leading-relaxed whitespace-pre-wrap">{mealPlan}</div>
+            </div>
+          )}
+
+          {/* Saved plans */}
+          {savedMealPlans.length > 0 && (
+            <div className="bg-white border border-[#EDEDEA] rounded-xl p-5">
+              <button onClick={() => setShowSaved(!showSaved)} className="flex justify-between items-center w-full cursor-pointer">
+                <h3 className="text-sm font-semibold text-[#1E1E1C]">Saved Plans ({savedMealPlans.length})</h3>
+                <span className="text-xs text-[#B0B0A8]">{showSaved ? '▲' : '▼'}</span>
+              </button>
+              {showSaved && (
+                <div className="mt-3 space-y-3">
+                  {savedMealPlans.map((sp, i) => (
+                    <div key={i} className="border-t border-[#F5F5F2] pt-3">
+                      <div className="flex justify-between items-center mb-2">
+                        <span className="text-[10px] text-[#B0B0A8] uppercase font-semibold">Plan {savedMealPlans.length - i}</span>
+                        <button onClick={() => { setMealPlan(sp) }} className="text-[10px] text-[#2D5A3D] font-semibold cursor-pointer">View</button>
                       </div>
-                      <span className="text-sm text-[#1E1E1C]">{rq.q}</span>
-                    </button>
+                      <p className="text-xs text-[#8B8B83] line-clamp-2">{sp.slice(0, 120)}...</p>
+                    </div>
                   ))}
-                  <button onClick={saveReadiness} className="w-full bg-[#2D5A3D] text-white py-3 rounded-xl text-sm font-semibold cursor-pointer mt-2">
-                    Save Assessment ({Math.round((Object.values(readinessAnswers).filter(Boolean).length / READINESS_QUESTIONS.length) * 100)}%)
-                  </button>
-                </div>
-              ) : (
-                <div>
-                  {readinessScore !== null ? (
-                    <div>
-                      <div className="h-2.5 bg-[#E8F0EB] rounded-full overflow-hidden mb-2">
-                        <div className="h-full rounded-full transition-all" style={{ width: `${readinessScore}%`, backgroundColor: readinessScore >= 75 ? '#2D5A3D' : readinessScore >= 50 ? '#C4742B' : '#9B9B93' }} />
-                      </div>
-                      <p className="text-xs text-[#8B8B83] mb-3">
-                        {readinessScore >= 75 ? "You're looking ready. Consider talking to your doctor about a taper timeline." :
-                         readinessScore >= 50 ? "Getting there. Focus on the habits you haven't locked in yet." :
-                         "Build more consistency before tapering. No rush — the habits are what matter."}
-                      </p>
-                      <button onClick={() => setShowReadiness(true)} className="text-xs text-[#2D5A3D] font-semibold cursor-pointer">Retake Assessment →</button>
-                    </div>
-                  ) : (
-                    <div>
-                      <p className="text-xs text-[#8B8B83] mb-3">See how prepared you are to begin tapering off your medication.</p>
-                      <button onClick={() => setShowReadiness(true)} className="w-full bg-[#E8F0EB] text-[#2D5A3D] py-3 rounded-xl text-sm font-semibold cursor-pointer">Take Assessment</button>
-                    </div>
-                  )}
                 </div>
               )}
             </div>
           )}
+        </>)}
 
-          {/* Tips for current phase */}
-          <div className="bg-white border border-[#EDEDEA] rounded-xl p-5">
-            <h3 className="text-sm font-semibold text-[#1E1E1C] mb-3">Key Actions — {PHASES[phaseIdx].label}</h3>
-            <div className="space-y-2.5">
-              {phaseInfo.tips.map((tip, i) => (
-                <div key={i} className="flex gap-2.5">
-                  <div className="w-5 h-5 rounded-full bg-[#E8F0EB] flex items-center justify-center shrink-0 mt-0.5">
-                    <span className="text-[10px] font-bold text-[#2D5A3D]">{i + 1}</span>
-                  </div>
-                  <p className="text-sm text-[#6B6B65] leading-relaxed">{tip}</p>
-                </div>
-              ))}
-            </div>
-          </div>
+        {/* ═══ EXERCISE TAB ═══ */}
+        {activeTab === 'exercise' && (<>
+          <div className="bg-white border border-[#EDEDEA] rounded-xl p-5 space-y-4">
+            <h3 className="text-sm font-semibold text-[#1E1E1C]">Generate Exercise Plan</h3>
 
-          {/* Hunger & cravings trend */}
-          {checkins.length > 0 && (
-            <div className="bg-white border border-[#EDEDEA] rounded-xl p-5">
-              <h3 className="text-sm font-semibold text-[#1E1E1C] mb-3">Trends (Last 7 Check-ins)</h3>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="bg-[#FFF0E5] rounded-lg p-3">
-                  <p className="text-[9px] text-[#C4742B] uppercase font-semibold">Avg Hunger</p>
-                  <p className="text-xl font-bold text-[#C4742B] mt-1">{avgHunger}<span className="text-xs font-normal">/5</span></p>
-                </div>
-                <div className="bg-[#F5F5F2] rounded-lg p-3">
-                  <p className="text-[9px] text-[#6B6B65] uppercase font-semibold">Avg Cravings</p>
-                  <p className="text-xl font-bold text-[#6B6B65] mt-1">{avgCravings}<span className="text-xs font-normal">/5</span></p>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Recent check-ins */}
-          {checkins.length > 0 && (
-            <div className="bg-white border border-[#EDEDEA] rounded-xl p-5">
-              <h3 className="text-sm font-semibold text-[#1E1E1C] mb-3">Recent Check-ins</h3>
-              <div className="space-y-2">
-                {checkins.slice(0, 5).map(c => (
-                  <div key={c.id} className="flex justify-between items-center py-2 border-t border-[#F5F5F2]">
-                    <div>
-                      {c.weight && <span className="text-sm font-medium text-[#1E1E1C]">{c.weight} lbs</span>}
-                      <span className="text-[10px] text-[#B0B0A8] ml-2">
-                        H:{c.hunger}/5 · C:{c.cravings}/5 · 💪{c.confidence}/5
-                      </span>
-                    </div>
-                    <span className="text-[10px] text-[#B0B0A8]">{new Date(c.logged_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
-                  </div>
+            <div>
+              <p className="text-[10px] font-semibold text-[#B0B0A8] uppercase tracking-wider mb-2">Fitness Level</p>
+              <div className="flex gap-2">
+                {['Beginner', 'Intermediate', 'Advanced'].map(l => (
+                  <button key={l} onClick={() => setFitnessLevel(l)}
+                    className={`flex-1 py-2 rounded-lg text-xs font-semibold cursor-pointer transition-colors ${fitnessLevel === l ? 'bg-[#4A90D9] text-white' : 'bg-[#F5F5F2] text-[#8B8B83]'}`}>{l}</button>
                 ))}
               </div>
             </div>
-          )}
 
-          {/* CTA to check in */}
-          <button onClick={() => setActiveView('checkin')}
-            className="w-full bg-[#2D5A3D] text-white py-4 rounded-xl text-sm font-semibold cursor-pointer hover:bg-[#3A7A52] transition-colors">
-            Log Tapering Check-in
-          </button>
+            <div>
+              <p className="text-[10px] font-semibold text-[#B0B0A8] uppercase tracking-wider mb-2">Equipment</p>
+              <div className="flex gap-2">
+                {['None', 'Dumbbells', 'Full Gym'].map(e => (
+                  <button key={e} onClick={() => setEquipment(e)}
+                    className={`flex-1 py-2 rounded-lg text-xs font-semibold cursor-pointer transition-colors ${equipment === e ? 'bg-[#4A90D9] text-white' : 'bg-[#F5F5F2] text-[#8B8B83]'}`}>{e}</button>
+                ))}
+              </div>
+            </div>
+
+            <button onClick={generateExercisePlan} disabled={generating === 'exercise'}
+              className="w-full bg-[#4A90D9] text-white py-3 rounded-xl text-sm font-semibold cursor-pointer disabled:opacity-50">
+              {generating === 'exercise' ? 'Generating...' : 'Generate Exercise Plan'}
+            </button>
+          </div>
+
+          {exercisePlan && (
+            <div className="bg-white border border-[#EDEDEA] rounded-xl p-5">
+              <div className="flex justify-between items-center mb-3">
+                <h3 className="text-sm font-semibold text-[#1E1E1C]">Your Exercise Plan</h3>
+                <button onClick={() => downloadPDF('exercise', exercisePlan)} className="text-xs text-[#4A90D9] font-semibold cursor-pointer hover:underline">Download PDF</button>
+              </div>
+              <div className="text-sm text-[#444] leading-relaxed whitespace-pre-wrap">{exercisePlan}</div>
+            </div>
+          )}
         </>)}
 
-        {/* ══════════ CHECK-IN VIEW ══════════ */}
-        {activeView === 'checkin' && (
-          <div className="space-y-4">
-            <div className="bg-white border border-[#EDEDEA] rounded-xl p-5 space-y-5">
-              <h2 className="text-base font-bold text-[#1E1E1C]">Tapering Check-in</h2>
-
-              {/* Weight */}
-              <div>
-                <label className="text-[10px] font-semibold text-[#B0B0A8] uppercase tracking-wider">Weight (optional)</label>
-                <input type="number" value={ciWeight} onChange={e => setCiWeight(e.target.value)} placeholder="lbs"
-                  className="w-full mt-1 px-3 py-2.5 rounded-lg border border-[#EDEDEA] text-sm text-[#1E1E1C] outline-none focus:border-[#2D5A3D] placeholder:text-[#C5C5BE]"/>
-              </div>
-
-              {/* Hunger */}
-              <div>
-                <label className="text-[10px] font-semibold text-[#B0B0A8] uppercase tracking-wider mb-2 block">Hunger Level: {ciHunger}/5</label>
-                <div className="flex gap-2">
-                  {[1,2,3,4,5].map(n => (
-                    <button key={n} onClick={() => setCiHunger(n)}
-                      className={`flex-1 py-2.5 rounded-lg text-xs font-bold cursor-pointer transition-all ${n <= ciHunger ? 'bg-[#C4742B] text-white' : 'bg-[#F5F5F2] text-[#C5C5BE]'}`}>
-                      {n}
-                    </button>
-                  ))}
-                </div>
-                <div className="flex justify-between text-[9px] text-[#B0B0A8] mt-1"><span>Not hungry</span><span>Very hungry</span></div>
-              </div>
-
-              {/* Cravings */}
-              <div>
-                <label className="text-[10px] font-semibold text-[#B0B0A8] uppercase tracking-wider mb-2 block">Cravings: {ciCravings}/5</label>
-                <div className="flex gap-2">
-                  {[1,2,3,4,5].map(n => (
-                    <button key={n} onClick={() => setCiCravings(n)}
-                      className={`flex-1 py-2.5 rounded-lg text-xs font-bold cursor-pointer transition-all ${n <= ciCravings ? 'bg-[#6B6B65] text-white' : 'bg-[#F5F5F2] text-[#C5C5BE]'}`}>
-                      {n}
-                    </button>
-                  ))}
-                </div>
-                <div className="flex justify-between text-[9px] text-[#B0B0A8] mt-1"><span>None</span><span>Intense</span></div>
-              </div>
-
-              {/* Confidence */}
-              <div>
-                <label className="text-[10px] font-semibold text-[#B0B0A8] uppercase tracking-wider mb-2 block">Confidence: {ciConfidence}/5</label>
-                <div className="flex gap-2">
-                  {[1,2,3,4,5].map(n => (
-                    <button key={n} onClick={() => setCiConfidence(n)}
-                      className={`flex-1 py-2.5 rounded-lg text-xs font-bold cursor-pointer transition-all ${n <= ciConfidence ? 'bg-[#2D5A3D] text-white' : 'bg-[#F5F5F2] text-[#C5C5BE]'}`}>
-                      {n}
-                    </button>
-                  ))}
-                </div>
-                <div className="flex justify-between text-[9px] text-[#B0B0A8] mt-1"><span>Struggling</span><span>Crushing it</span></div>
-              </div>
-
-              {/* Habits */}
-              <div>
-                <label className="text-[10px] font-semibold text-[#B0B0A8] uppercase tracking-wider mb-2 block">Habits Maintained Today</label>
-                <div className="flex flex-wrap gap-1.5">
-                  {HABITS.map(h => (
-                    <button key={h} onClick={() => setCiHabits(prev => prev.includes(h) ? prev.filter(x => x !== h) : [...prev, h])}
-                      className={`text-xs px-3 py-1.5 rounded-full border cursor-pointer transition-all ${ciHabits.includes(h) ? 'border-[#2D5A3D] bg-[#E8F0EB] text-[#2D5A3D] font-semibold' : 'border-[#EDEDEA] text-[#8B8B83]'}`}>
-                      {h}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Notes */}
-              <div>
-                <label className="text-[10px] font-semibold text-[#B0B0A8] uppercase tracking-wider">Notes</label>
-                <textarea value={ciNotes} onChange={e => setCiNotes(e.target.value)} placeholder="How are you feeling about your progress?"
-                  rows={3} className="w-full mt-1 px-3 py-2.5 rounded-lg border border-[#EDEDEA] text-sm text-[#1E1E1C] outline-none focus:border-[#2D5A3D] placeholder:text-[#C5C5BE] resize-none"/>
-              </div>
-
-              <button onClick={submitCheckin} disabled={savingCheckin}
-                className="w-full bg-[#2D5A3D] text-white py-3 rounded-xl text-sm font-semibold cursor-pointer disabled:opacity-50">
-                {savingCheckin ? 'Saving...' : 'Save Check-in'}
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* ══════════ CHAT VIEW ══════════ */}
-        {activeView === 'chat' && (
+        {/* ═══ COACH TAB ═══ */}
+        {activeTab === 'coach' && (
           <div className="flex flex-col" style={{ height: 'calc(100vh - 220px)' }}>
-            {/* Chat messages */}
             <div ref={chatRef} className="flex-1 overflow-y-auto space-y-3 mb-4">
               {chatMessages.length === 0 && (
-                <div className="text-center py-10">
+                <div className="text-center py-8">
                   <div className="w-14 h-14 rounded-full bg-[#E8F0EB] flex items-center justify-center mx-auto mb-3">
-                    <span className="text-2xl">🌿</span>
+                    <span className="text-2xl">💪</span>
                   </div>
-                  <p className="text-sm font-semibold text-[#1E1E1C]">Ask Nova about tapering</p>
-                  <p className="text-xs text-[#8B8B83] mt-1 max-w-xs mx-auto">Get personalized guidance on your transition plan, managing hunger, or anything about life after GLP-1.</p>
+                  <p className="text-sm font-semibold text-[#1E1E1C]">Ask Trish, your transition coach</p>
+                  <p className="text-xs text-[#8B8B83] mt-1 max-w-xs mx-auto">Direct, data-driven plans for tapering, nutrition, exercise, and maintaining your results.</p>
                   <div className="flex flex-wrap justify-center gap-2 mt-4">
                     {[
-                      "Am I ready to start tapering?",
-                      "How do I manage increased hunger?",
-                      "What if I regain weight?",
-                      "Help me build a taper schedule",
+                      'Generate my tapering plan',
+                      'Make me a weekly meal plan',
+                      'Create an exercise plan for me',
+                      'Am I ready to start tapering?',
+                      "I'm gaining weight — what do I do?",
+                      'Give me a high-protein recipe',
                     ].map(q => (
-                      <button key={q} onClick={() => { setChatInput(q); }}
+                      <button key={q} onClick={() => sendChat(q)}
                         className="text-xs px-3 py-2 rounded-full border border-[#EDEDEA] text-[#6B6B65] cursor-pointer hover:border-[#2D5A3D] hover:text-[#2D5A3D] transition-colors">
                         {q}
                       </button>
@@ -541,12 +456,12 @@ export default function Maintenance() {
 
               {chatMessages.map((msg, i) => (
                 <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                  {msg.role === 'nova' && (
+                  {msg.role === 'assistant' && (
                     <div className="w-7 h-7 rounded-full bg-[#2D5A3D] flex items-center justify-center shrink-0 mr-2 mt-1">
-                      <span className="text-xs">🌿</span>
+                      <span className="text-xs">💪</span>
                     </div>
                   )}
-                  <div className={`max-w-[80%] px-4 py-3 rounded-2xl text-sm leading-relaxed ${
+                  <div className={`max-w-[85%] px-4 py-3 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap ${
                     msg.role === 'user' ? 'bg-[#2D5A3D] text-white rounded-br-md' : 'bg-white border border-[#EDEDEA] text-[#1E1E1C] rounded-bl-md shadow-sm'
                   }`}>{msg.content}</div>
                 </div>
@@ -554,7 +469,7 @@ export default function Maintenance() {
 
               {chatLoading && (
                 <div className="flex justify-start">
-                  <div className="w-7 h-7 rounded-full bg-[#2D5A3D] flex items-center justify-center shrink-0 mr-2 mt-1"><span className="text-xs">🌿</span></div>
+                  <div className="w-7 h-7 rounded-full bg-[#2D5A3D] flex items-center justify-center shrink-0 mr-2 mt-1"><span className="text-xs">💪</span></div>
                   <div className="bg-white border border-[#EDEDEA] px-4 py-3 rounded-2xl rounded-bl-md shadow-sm">
                     <div className="flex gap-1.5">
                       <div className="w-2 h-2 rounded-full bg-[#B0B0A8] animate-bounce" style={{ animationDelay: '0ms' }} />
@@ -566,14 +481,13 @@ export default function Maintenance() {
               )}
             </div>
 
-            {/* Chat input */}
             <div className="flex gap-2">
               <input type="text" value={chatInput} onChange={e => setChatInput(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && sendChat()}
-                placeholder="Ask about tapering, maintenance..." autoFocus
+                placeholder="Ask Trish anything..." autoFocus
                 className="flex-1 px-4 py-3 rounded-xl border border-[#EDEDEA] bg-white text-sm text-[#1E1E1C] outline-none focus:border-[#2D5A3D] placeholder:text-[#C5C5BE]"/>
               <VoiceInput onResult={(text) => setChatInput(text)} />
-              <button onClick={sendChat} disabled={chatLoading || !chatInput.trim()}
+              <button onClick={() => sendChat()} disabled={chatLoading || !chatInput.trim()}
                 className="bg-[#2D5A3D] text-white px-5 py-3 rounded-xl text-sm font-semibold cursor-pointer disabled:opacity-30 transition-opacity">
                 Send
               </button>
