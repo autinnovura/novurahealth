@@ -1,4 +1,18 @@
+'use client'
+
+import { useEffect } from 'react'
+import { useRouter } from 'next/navigation'
+import { supabase } from './lib/supabase'
+
 export default function Home() {
+  const router = useRouter()
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (user) router.replace('/dashboard')
+    })
+  }, [router])
+
   return (
     <main className="bg-[#FFFBF5] text-[#2A2A28] min-h-screen">
       {/* NAV */}
