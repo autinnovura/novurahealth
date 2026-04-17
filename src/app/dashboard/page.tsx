@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '../lib/supabase'
 import FirstRunModal from '../components/FirstRunModal'
+import MedicationLevelChart from '../components/MedicationLevelChart'
 
 // ── Types ──────────────────────────────────────────────
 interface Profile { name: string; medication: string; dose: string; start_date: string; current_weight: string; goal_weight: string; primary_goal: string; biggest_challenge: string; exercise_level: string; first_run_complete?: boolean | null }
@@ -114,6 +115,7 @@ export default function Dashboard() {
   const [waterLogs, setWaterLogs] = useState<WaterLog[]>([])
   const [checkinLogs, setCheckinLogs] = useState<CheckinLog[]>([])
   const [exerciseLogs, setExerciseLogs] = useState<ExerciseLog[]>([])
+  const [medChartLogs, setMedChartLogs] = useState<MedLog[]>([])
   const [userId, setUserId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<'overview' | 'nutrition' | 'health'>('overview')
@@ -196,7 +198,7 @@ export default function Dashboard() {
       const today = startOfDay(new Date())
       const monthAgo = addDays(today, -30)
 
-      const [meds, weights, effects, todayFoods, monthFoods, water, checkins, exercises] = await Promise.all([
+      const [meds, weights, effects, todayFoods, monthFoods, water, checkins, exercises, medChart] = await Promise.all([
         supabase.from('medication_logs').select('*').eq('user_id', user.id).order('logged_at', { ascending: false }).limit(20),
         supabase.from('weight_logs').select('*').eq('user_id', user.id).order('logged_at', { ascending: false }).limit(30),
         supabase.from('side_effect_logs').select('*').eq('user_id', user.id).order('logged_at', { ascending: false }).limit(10),
@@ -205,6 +207,7 @@ export default function Dashboard() {
         supabase.from('water_logs').select('*').eq('user_id', user.id).gte('logged_at', today.toISOString()),
         supabase.from('checkin_logs').select('*').eq('user_id', user.id).order('logged_at', { ascending: false }).limit(7),
         supabase.from('exercise_logs').select('*').eq('user_id', user.id).order('logged_at', { ascending: false }).limit(10),
+        supabase.from('medication_logs').select('*').eq('user_id', user.id).order('logged_at', { ascending: true }),
       ])
 
       setMedLogs(meds.data || [])
@@ -217,6 +220,7 @@ export default function Dashboard() {
       setDateWaterLogs(water.data || [])
       setCheckinLogs(checkins.data || [])
       setExerciseLogs(exercises.data || [])
+      setMedChartLogs(medChart.data || [])
       setStreak(calculateStreak(monthFoods.data || []))
       setLoading(false)
     }
@@ -463,6 +467,15 @@ export default function Dashboard() {
             <p className="text-[10px] font-semibold text-[#B0B0A8] uppercase tracking-wider mb-2">Quick Add Water</p>
             <div className="flex gap-2">{WATER_AMOUNTS.map(oz => <button key={oz} onClick={() => logWater(oz)} className="flex-1 bg-[#E0EBF5] text-[#4A90D9] py-2 rounded-lg text-xs font-semibold hover:bg-[#D0E0F0] transition-colors cursor-pointer">+{oz}oz</button>)}</div>
           </div>
+
+          {/* Medication level chart */}
+          {profile?.medication && (
+            <MedicationLevelChart
+              medication={profile.medication}
+              dose={profile.dose}
+              injectionLogs={medChartLogs || []}
+            />
+          )}
 
           {/* Quick actions */}
           <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
