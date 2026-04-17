@@ -23,15 +23,65 @@ const PHASES: { id: Phase; label: string; short: string }[] = [
   { id: 'off_medication', label: 'Off Medication', short: 'Free' },
 ]
 
-const READINESS_ITEMS = [
-  'Weight stable 4+ weeks',
-  'Hitting protein target consistently',
-  'Exercising 3+ times per week',
-  'Sleeping 7+ hours consistently',
-  'Managing stress without food',
-  'Comfortable cooking healthy meals',
-  'Doctor aware of tapering intent',
-  'Support system in place',
+const ASSESSMENT_SECTIONS = [
+  {
+    title: 'Weight & Medication Stability',
+    items: [
+      'My weight has been stable (within 3 lbs) for at least 4 weeks',
+      'I have been on my current dose for at least 8 weeks',
+      'I am not currently experiencing significant side effects',
+    ],
+  },
+  {
+    title: 'Nutrition Habits',
+    items: [
+      'I consistently hit my daily protein target',
+      'I track my meals regularly (at least 5 days/week)',
+      'I can prepare healthy, high-protein meals on my own',
+      'I eat mindfully — I stop when full, not when the plate is empty',
+    ],
+  },
+  {
+    title: 'Exercise & Movement',
+    items: [
+      'I exercise at least 3 times per week',
+      'My routine includes resistance/strength training',
+      'I can maintain my exercise routine without external motivation',
+    ],
+  },
+  {
+    title: 'Sleep & Recovery',
+    items: [
+      'I sleep 7+ hours most nights',
+      'I have a consistent sleep schedule',
+    ],
+  },
+  {
+    title: 'Mental & Emotional Readiness',
+    items: [
+      'I can manage stress without turning to food',
+      'I feel confident I can handle increased appetite',
+      'I have strategies for emotional eating triggers',
+      'I am not making this decision due to external pressure (cost, others\' opinions)',
+    ],
+  },
+  {
+    title: 'Medical & Support',
+    items: [
+      'My doctor is aware I want to taper and supports the plan',
+      'I have a support system (partner, friend, community, coach)',
+      'I understand tapering is gradual and I may need to pause or reverse',
+      'I accept that going back on medication is not failure — it is a valid option',
+    ],
+  },
+]
+const ALL_ASSESSMENT_ITEMS = ASSESSMENT_SECTIONS.flatMap(s => s.items)
+const TAPER_DURATIONS = [
+  { id: '30day', label: '30 Days', desc: 'Aggressive — only if on lowest dose already' },
+  { id: '60day', label: '60 Days', desc: 'Moderate — standard step-down' },
+  { id: '90day', label: '90 Days', desc: 'Recommended — gradual and safe' },
+  { id: '6month', label: '6 Months', desc: 'Conservative — maximum stability' },
+  { id: '1year', label: '1 Year', desc: 'Ultra-gradual — lowest risk of regain' },
 ]
 
 export default function Maintenance() {
@@ -42,8 +92,11 @@ export default function Maintenance() {
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<'plan' | 'nutrition' | 'exercise' | 'coach'>('plan')
 
-  // Readiness checkboxes
+  // Assessment
   const [readiness, setReadiness] = useState<Record<string, boolean>>({})
+  const [assessmentSaved, setAssessmentSaved] = useState(false)
+  const [confirmedReady, setConfirmedReady] = useState(false)
+  const [taperDuration, setTaperDuration] = useState('90day')
 
   // Generated content
   const [taperPlan, setTaperPlan] = useState('')
@@ -82,7 +135,11 @@ export default function Maintenance() {
       const { data: tp } = await supabase.from('tapering_plans').select('*').eq('user_id', user.id).single()
       if (tp) {
         setPlan(tp)
-        if (tp.readiness_answers) setReadiness(tp.readiness_answers)
+        if (tp.readiness_answers) {
+          setReadiness(tp.readiness_answers)
+          if (tp.readiness_score !== null && tp.readiness_score !== undefined) setAssessmentSaved(true)
+          if (tp.readiness_answers.__confirmed_ready) setConfirmedReady(true)
+        }
       }
 
       // Load saved meal plans from localStorage
@@ -120,7 +177,8 @@ export default function Maintenance() {
   // ── Generators ────────────────────────────────────────
   async function generateTaperPlan() {
     setGenerating('taper')
-    const result = await sendToCoach('Generate my complete tapering plan based on all my data. Include specific phases, timelines, and targets.', false)
+    const durationLabel = TAPER_DURATIONS.find(d => d.id === taperDuration)?.label || '90 Days'
+    const result = await sendToCoach(`Generate my complete tapering plan based on all my data. The user wants a ${durationLabel} tapering timeline. Include specific phases with exact week ranges, dose changes at each step, protein/exercise targets, red flags to watch for, and what to do if things go wrong. Make it personal to my medication, dose, weight, and habits.`, false)
     setTaperPlan(result)
     setGenerating(null)
   }
@@ -168,10 +226,13 @@ export default function Maintenance() {
   }
 
   // ── Readiness Save ────────────────────────────────────
-  async function saveReadiness() {
+  async function saveReadiness(confirmed = false) {
     if (!userId) return
-    const score = Math.round((Object.values(readiness).filter(Boolean).length / READINESS_ITEMS.length) * 100)
-    const payload = { readiness_score: score, readiness_answers: readiness, updated_at: new Date().toISOString() }
+    const answers = { ...readiness }
+    if (confirmed) answers.__confirmed_ready = true
+    const checked = ALL_ASSESSMENT_ITEMS.filter(item => readiness[item]).length
+    const score = Math.round((checked / ALL_ASSESSMENT_ITEMS.length) * 100)
+    const payload = { readiness_score: score, readiness_answers: answers, updated_at: new Date().toISOString() }
     if (plan) {
       const { data } = await supabase.from('tapering_plans').update(payload).eq('id', plan.id).select().single()
       if (data) setPlan(data)
@@ -179,6 +240,8 @@ export default function Maintenance() {
       const { data } = await supabase.from('tapering_plans').insert({ user_id: userId, phase: 'exploring', ...payload }).select().single()
       if (data) setPlan(data)
     }
+    setAssessmentSaved(true)
+    if (confirmed) setConfirmedReady(true)
   }
 
   async function setPhase(phase: Phase) {
@@ -209,7 +272,11 @@ export default function Maintenance() {
   const phase = plan?.phase || 'exploring'
   const phaseIdx = PHASES.findIndex(p => p.id === phase)
   const readinessScore = plan?.readiness_score ?? null
-  const checkedCount = Object.values(readiness).filter(Boolean).length
+  const checkedCount = ALL_ASSESSMENT_ITEMS.filter(item => readiness[item]).length
+  const totalItems = ALL_ASSESSMENT_ITEMS.length
+  const currentPct = Math.round((checkedCount / totalItems) * 100)
+  const isFullyReady = checkedCount === totalItems
+  const taperUnlocked = confirmedReady
 
   return (
     <div className="min-h-screen bg-[#FAFAF7] pb-20">
@@ -257,63 +324,139 @@ export default function Maintenance() {
           {/* Current status */}
           <div className="bg-white border border-[#EDEDEA] rounded-xl p-5">
             <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 rounded-xl bg-[#E8F0EB] flex items-center justify-center text-xl shrink-0">📋</div>
+              <div className="w-10 h-10 rounded-xl bg-[#E8F0EB] flex items-center justify-center text-xl shrink-0">{taperUnlocked ? '📋' : '🔒'}</div>
               <div>
-                <h2 className="text-sm font-bold text-[#1E1E1C]">{PHASES[phaseIdx].label} Phase</h2>
-                <p className="text-xs text-[#8B8B83]">{profile?.medication} · {profile?.dose} · {profile?.start_date ? `since ${new Date(profile.start_date).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}` : ''}</p>
+                <h2 className="text-sm font-bold text-[#1E1E1C]">{taperUnlocked ? `${PHASES[phaseIdx].label} Phase` : 'Readiness Assessment'}</h2>
+                <p className="text-xs text-[#8B8B83]">{taperUnlocked ? `${profile?.medication} · ${profile?.dose}` : 'Complete the assessment to unlock your tapering plan'}</p>
               </div>
             </div>
-            <div className="grid grid-cols-3 gap-2">
-              <div className="bg-[#F5F5F2] rounded-lg p-3 text-center">
-                <p className="text-lg font-bold text-[#1E1E1C]">{plan?.stability_streak_days || 0}</p>
-                <p className="text-[9px] text-[#B0B0A8]">stable days</p>
+            {/* Progress bar */}
+            <div className="mb-3">
+              <div className="flex justify-between text-[10px] mb-1">
+                <span className="text-[#B0B0A8] font-semibold uppercase">Readiness</span>
+                <span className={`font-bold ${currentPct === 100 ? 'text-[#2D5A3D]' : currentPct >= 75 ? 'text-[#C4742B]' : 'text-[#8B8B83]'}`}>{checkedCount}/{totalItems} ({currentPct}%)</span>
               </div>
-              <div className="bg-[#F5F5F2] rounded-lg p-3 text-center">
-                <p className="text-lg font-bold text-[#1E1E1C]">{readinessScore !== null ? `${readinessScore}%` : '—'}</p>
-                <p className="text-[9px] text-[#B0B0A8]">readiness</p>
-              </div>
-              <div className="bg-[#F5F5F2] rounded-lg p-3 text-center">
-                <p className="text-lg font-bold text-[#1E1E1C]">{checkedCount}/8</p>
-                <p className="text-[9px] text-[#B0B0A8]">habits</p>
+              <div className="h-2.5 bg-[#F0F0ED] rounded-full overflow-hidden">
+                <div className="h-full rounded-full transition-all duration-500" style={{ width: `${currentPct}%`, backgroundColor: currentPct === 100 ? '#2D5A3D' : currentPct >= 75 ? '#C4742B' : '#9B9B93' }} />
               </div>
             </div>
+            {taperUnlocked && (
+              <div className="grid grid-cols-2 gap-2">
+                <div className="bg-[#E8F0EB] rounded-lg p-3 text-center">
+                  <p className="text-lg font-bold text-[#2D5A3D]">{readinessScore}%</p>
+                  <p className="text-[9px] text-[#2D5A3D]/60">readiness score</p>
+                </div>
+                <div className="bg-[#F5F5F2] rounded-lg p-3 text-center">
+                  <p className="text-lg font-bold text-[#1E1E1C]">{plan?.stability_streak_days || 0}</p>
+                  <p className="text-[9px] text-[#B0B0A8]">stable days</p>
+                </div>
+              </div>
+            )}
           </div>
 
-          {/* Readiness checklist */}
-          <div className="bg-white border border-[#EDEDEA] rounded-xl p-5">
-            <h3 className="text-sm font-semibold text-[#1E1E1C] mb-3">Readiness Checklist</h3>
-            <div className="space-y-2">
-              {READINESS_ITEMS.map((item, i) => (
-                <button key={i} onClick={() => { const updated = { ...readiness, [item]: !readiness[item] }; setReadiness(updated) }}
-                  className={`w-full flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all text-left ${readiness[item] ? 'border-[#2D5A3D] bg-[#E8F0EB]' : 'border-[#EDEDEA] hover:border-[#B0B0A8]'}`}>
-                  <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center shrink-0 ${readiness[item] ? 'border-[#2D5A3D] bg-[#2D5A3D]' : 'border-[#D0D0CA]'}`}>
-                    {readiness[item] && <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" d="M5 13l4 4L19 7"/></svg>}
+          {/* ── ASSESSMENT (shown until confirmed ready) ── */}
+          {!taperUnlocked && (<>
+            {ASSESSMENT_SECTIONS.map((section, si) => {
+              const sectionChecked = section.items.filter(item => readiness[item]).length
+              return (
+                <div key={si} className="bg-white border border-[#EDEDEA] rounded-xl p-5">
+                  <div className="flex justify-between items-center mb-3">
+                    <h3 className="text-sm font-semibold text-[#1E1E1C]">{section.title}</h3>
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${sectionChecked === section.items.length ? 'bg-[#E8F0EB] text-[#2D5A3D]' : 'bg-[#F5F5F2] text-[#B0B0A8]'}`}>
+                      {sectionChecked}/{section.items.length}
+                    </span>
                   </div>
-                  <span className="text-sm text-[#1E1E1C]">{item}</span>
-                </button>
-              ))}
+                  <div className="space-y-2">
+                    {section.items.map((item, i) => (
+                      <button key={i} onClick={() => setReadiness({ ...readiness, [item]: !readiness[item] })}
+                        className={`w-full flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all text-left ${readiness[item] ? 'border-[#2D5A3D] bg-[#E8F0EB]' : 'border-[#EDEDEA] hover:border-[#B0B0A8]'}`}>
+                        <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center shrink-0 ${readiness[item] ? 'border-[#2D5A3D] bg-[#2D5A3D]' : 'border-[#D0D0CA]'}`}>
+                          {readiness[item] && <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" d="M5 13l4 4L19 7"/></svg>}
+                        </div>
+                        <span className="text-sm text-[#1E1E1C]">{item}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )
+            })}
+
+            {/* Assessment result + action */}
+            <div className={`rounded-xl p-5 ${isFullyReady ? 'bg-[#E8F0EB] border border-[#2D5A3D]/20' : 'bg-[#F5F5F2] border border-[#EDEDEA]'}`}>
+              {isFullyReady ? (
+                <div className="text-center space-y-3">
+                  <div className="w-12 h-12 rounded-full bg-[#2D5A3D] flex items-center justify-center mx-auto text-xl">✓</div>
+                  <h3 className="text-base font-bold text-[#2D5A3D]">You're ready to taper</h3>
+                  <p className="text-xs text-[#2D5A3D]/70 max-w-sm mx-auto">You've checked every box. Your habits, health, and support system are in place. Confirm below to unlock your personalized tapering plan.</p>
+                  <button onClick={() => saveReadiness(true)}
+                    className="w-full bg-[#2D5A3D] text-white py-4 rounded-xl text-sm font-semibold cursor-pointer hover:bg-[#3A7A52] transition-colors mt-2">
+                    I'm Ready — Unlock My Tapering Plan
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-lg shrink-0">{currentPct >= 75 ? '🔶' : '🔒'}</div>
+                    <div>
+                      <h3 className="text-sm font-bold text-[#1E1E1C]">{currentPct >= 75 ? 'Almost there' : 'Keep building habits'}</h3>
+                      <p className="text-xs text-[#8B8B83]">{totalItems - checkedCount} item{totalItems - checkedCount !== 1 ? 's' : ''} remaining before you can generate a tapering plan</p>
+                    </div>
+                  </div>
+                  <button onClick={() => saveReadiness()}
+                    className="w-full bg-white text-[#2D5A3D] py-2.5 rounded-lg text-xs font-semibold cursor-pointer border border-[#2D5A3D]/20 hover:bg-[#E8F0EB] transition-colors">
+                    Save Progress ({currentPct}%)
+                  </button>
+                  {currentPct >= 75 && (
+                    <p className="text-[10px] text-[#8B8B83] text-center">Feeling ready despite unchecked items? Talk to Trish in the Coach tab to discuss.</p>
+                  )}
+                </div>
+              )}
             </div>
-            <button onClick={saveReadiness} className="w-full mt-3 bg-[#F5F5F2] text-[#2D5A3D] py-2.5 rounded-lg text-xs font-semibold cursor-pointer hover:bg-[#E8F0EB] transition-colors">
-              Save ({Math.round((checkedCount / READINESS_ITEMS.length) * 100)}% ready)
-            </button>
-          </div>
+          </>)}
 
-          {/* Generate tapering plan */}
-          <button onClick={generateTaperPlan} disabled={generating === 'taper'}
-            className="w-full bg-[#2D5A3D] text-white py-4 rounded-xl text-sm font-semibold cursor-pointer hover:bg-[#3A7A52] transition-colors disabled:opacity-50">
-            {generating === 'taper' ? 'Generating...' : 'Generate My Tapering Plan'}
-          </button>
-
-          {/* Generated plan display */}
-          {taperPlan && (
+          {/* ── PLAN GENERATION (only after confirmed ready) ── */}
+          {taperUnlocked && (<>
+            {/* Duration selector */}
             <div className="bg-white border border-[#EDEDEA] rounded-xl p-5">
-              <div className="flex justify-between items-center mb-3">
-                <h3 className="text-sm font-semibold text-[#1E1E1C]">Your Tapering Plan</h3>
-                <button onClick={() => downloadPDF('taper', taperPlan)} className="text-xs text-[#2D5A3D] font-semibold cursor-pointer hover:underline">Download PDF</button>
+              <h3 className="text-sm font-semibold text-[#1E1E1C] mb-3">Choose Your Timeline</h3>
+              <div className="space-y-2">
+                {TAPER_DURATIONS.map(d => (
+                  <button key={d.id} onClick={() => setTaperDuration(d.id)}
+                    className={`w-full flex items-center justify-between p-3.5 rounded-lg border cursor-pointer transition-all text-left ${taperDuration === d.id ? 'border-[#2D5A3D] bg-[#E8F0EB]' : 'border-[#EDEDEA] hover:border-[#B0B0A8]'}`}>
+                    <div>
+                      <span className={`text-sm font-semibold ${taperDuration === d.id ? 'text-[#2D5A3D]' : 'text-[#1E1E1C]'}`}>{d.label}</span>
+                      <p className="text-[11px] text-[#8B8B83] mt-0.5">{d.desc}</p>
+                    </div>
+                    <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 ${taperDuration === d.id ? 'border-[#2D5A3D] bg-[#2D5A3D]' : 'border-[#D0D0CA]'}`}>
+                      {taperDuration === d.id && <div className="w-2 h-2 rounded-full bg-white" />}
+                    </div>
+                  </button>
+                ))}
               </div>
-              <div className="text-sm text-[#444] leading-relaxed whitespace-pre-wrap">{taperPlan}</div>
             </div>
-          )}
+
+            <button onClick={generateTaperPlan} disabled={generating === 'taper'}
+              className="w-full bg-[#2D5A3D] text-white py-4 rounded-xl text-sm font-semibold cursor-pointer hover:bg-[#3A7A52] transition-colors disabled:opacity-50">
+              {generating === 'taper' ? 'Generating your plan...' : `Generate My ${TAPER_DURATIONS.find(d => d.id === taperDuration)?.label} Tapering Plan`}
+            </button>
+
+            {/* Generated plan */}
+            {taperPlan && (
+              <div className="bg-white border border-[#EDEDEA] rounded-xl p-5">
+                <div className="flex justify-between items-center mb-3">
+                  <h3 className="text-sm font-semibold text-[#1E1E1C]">Your Tapering Plan</h3>
+                  <button onClick={() => downloadPDF('taper', taperPlan)} className="text-xs text-[#2D5A3D] font-semibold cursor-pointer hover:underline">Download PDF</button>
+                </div>
+                <div className="text-sm text-[#444] leading-relaxed whitespace-pre-wrap">{taperPlan}</div>
+              </div>
+            )}
+
+            {/* Option to retake assessment */}
+            <button onClick={() => { setConfirmedReady(false); setAssessmentSaved(false) }}
+              className="w-full text-xs text-[#B0B0A8] py-2 cursor-pointer hover:text-[#6B6B65] transition-colors">
+              Retake readiness assessment
+            </button>
+          </>)}
         </>)}
 
         {/* ═══ NUTRITION TAB ═══ */}
