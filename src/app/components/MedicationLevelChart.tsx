@@ -162,7 +162,7 @@ export default function MedicationLevelChart({ medication, dose, injectionLogs }
   // The chart shows past + future. "Now" sits at ~75% of the x-axis so you
   // can see the projected decay after the most recent injection.
   const pastHours = timeRange === 'week' ? 168 : timeRange === 'month' ? 720 : 2160
-  const futureHours = Math.round(pastHours * 0.33) // 33% future projection
+  const futureHours = 168 // always show 1 week into the future
   const totalHours = pastHours + futureHours
 
   const chartData = useMemo(() => {
