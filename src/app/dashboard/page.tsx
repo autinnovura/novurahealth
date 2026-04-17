@@ -7,7 +7,7 @@ import FirstRunModal from '../components/FirstRunModal'
 import MedicationLevelChart from '../components/MedicationLevelChart'
 
 // ── Types ──────────────────────────────────────────────
-interface Profile { name: string; medication: string; dose: string; start_date: string; current_weight: string; goal_weight: string; primary_goal: string; biggest_challenge: string; exercise_level: string; first_run_complete?: boolean | null }
+interface Profile { name: string; medication: string; dose: string; start_date: string; current_weight: string; goal_weight: string; primary_goal: string; biggest_challenge: string; exercise_level: string; first_run_complete?: boolean | null; protein_target_g?: number | null; water_target_oz?: number | null; injection_day?: string | null; injection_time?: string | null }
 interface MedLog { id: string; medication: string; dose: string; injection_site: string; notes: string; logged_at: string }
 interface WeightLog { id: string; weight: number; logged_at: string }
 interface SideEffectLog { id: string; symptom: string; severity: number; logged_at: string }
@@ -23,6 +23,22 @@ const WATER_AMOUNTS = [8, 16, 24, 32]
 const EXERCISE_TYPES = ['Walking', 'Running', 'Weight training', 'Yoga', 'Swimming', 'Cycling', 'HIIT', 'Stretching', 'Other']
 const MOOD_LABELS = ['Rough', 'Low', 'Okay', 'Good', 'Great']
 const ENERGY_LABELS = ['Exhausted', 'Low', 'Moderate', 'High', 'Energized']
+const MEDICATION_DOSES: Record<string, number[]> = {
+  'Ozempic': [0.25, 0.5, 1.0, 2.0],
+  'Semaglutide (Ozempic)': [0.25, 0.5, 1.0, 2.0],
+  'Wegovy': [0.25, 0.5, 1.0, 1.7, 2.4],
+  'Semaglutide (Wegovy)': [0.25, 0.5, 1.0, 1.7, 2.4],
+  'Mounjaro': [2.5, 5, 7.5, 10, 12.5, 15],
+  'Tirzepatide (Mounjaro)': [2.5, 5, 7.5, 10, 12.5, 15],
+  'Zepbound': [2.5, 5, 7.5, 10, 12.5, 15],
+  'Tirzepatide (Zepbound)': [2.5, 5, 7.5, 10, 12.5, 15],
+  'Saxenda': [0.6, 1.2, 1.8, 2.4, 3.0],
+  'Liraglutide (Saxenda)': [0.6, 1.2, 1.8, 2.4, 3.0],
+  'Trulicity': [0.75, 1.5, 3.0, 4.5],
+  'Dulaglutide (Trulicity)': [0.75, 1.5, 3.0, 4.5],
+  'Rybelsus': [3, 7, 14],
+  'Semaglutide oral (Rybelsus)': [3, 7, 14],
+}
 
 // ── Helpers ────────────────────────────────────────────
 function formatTime(d: string) { return new Date(d).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }) }
@@ -131,6 +147,8 @@ export default function Dashboard() {
 
   // Form states
   const [injectionSite, setInjectionSite] = useState('')
+  const [medDose, setMedDose] = useState('')
+  const [customDose, setCustomDose] = useState('')
   const [medNotes, setMedNotes] = useState('')
   const [newWeight, setNewWeight] = useState('')
   const [symptom, setSymptom] = useState('')
@@ -252,9 +270,20 @@ export default function Dashboard() {
 
   async function logMedication() {
     if (!userId || !profile) return
-    const { data } = await supabase.from('medication_logs').insert({ user_id: userId, medication: profile.medication, dose: profile.dose, injection_site: injectionSite, notes: medNotes }).select().single()
-    if (data) setMedLogs([data, ...medLogs])
-    setModal(null); setInjectionSite(''); setMedNotes('')
+    const finalDose = medDose === 'custom' ? `${customDose}mg` : medDose || profile.dose
+    const { data } = await supabase.from('medication_logs').insert({ user_id: userId, medication: profile.medication, dose: finalDose, injection_site: injectionSite, notes: medNotes }).select().single()
+    if (data) {
+      setMedLogs([data, ...medLogs])
+      // Update profile dose if changed
+      if (finalDose !== profile.dose) {
+        await supabase.from('profiles').update({ dose: finalDose }).eq('id', userId)
+        setProfile({ ...profile, dose: finalDose })
+      }
+      // Re-fetch chart logs so the chart updates immediately
+      const { data: updated } = await supabase.from('medication_logs').select('*').eq('user_id', userId).order('logged_at', { ascending: true })
+      if (updated) setMedChartLogs(updated)
+    }
+    setModal(null); setInjectionSite(''); setMedDose(''); setCustomDose(''); setMedNotes('')
   }
 
   async function logWeightEntry() {
@@ -299,7 +328,9 @@ export default function Dashboard() {
   const startWeight = profile?.current_weight ? parseFloat(profile.current_weight) : null
   const weightLost = startWeight && latestWeight ? Math.round((startWeight - latestWeight) * 10) / 10 : null
   const progressPct = startWeight && goalWeight && latestWeight ? Math.min(100, Math.max(0, Math.round(((startWeight - latestWeight) / (startWeight - goalWeight)) * 100))) : null
-  const proteinTarget = goalWeight ? Math.round(goalWeight * 0.8) : null
+  const defaultProteinTarget = goalWeight ? Math.round((goalWeight / 2.205) * 1.4) : null
+  const proteinTarget = profile?.protein_target_g || defaultProteinTarget
+  const waterTarget = profile?.water_target_oz || 80
   const daysOnMed = profile?.start_date ? Math.max(1, Math.floor((Date.now() - new Date(profile.start_date).getTime()) / 86400000)) : null
 
   const lastInj = medLogs[0]
@@ -444,8 +475,8 @@ export default function Dashboard() {
             </div>
             <div className="bg-white border border-[#EDEDEA] rounded-xl p-4">
               <p className="text-[10px] font-semibold text-[#B0B0A8] uppercase tracking-wider">Water</p>
-              <p className="text-xl font-bold text-[#4A90D9] mt-1">{todayWater}<span className="text-xs font-normal text-[#B0B0A8]">/80oz</span></p>
-              <div className="h-1 bg-[#E0EBF5] rounded-full mt-2"><div className="h-full bg-[#4A90D9] rounded-full" style={{ width: `${Math.min(100,(todayWater/80)*100)}%` }}/></div>
+              <p className="text-xl font-bold text-[#4A90D9] mt-1">{todayWater}<span className="text-xs font-normal text-[#B0B0A8]">/{waterTarget}oz</span></p>
+              <div className="h-1 bg-[#E0EBF5] rounded-full mt-2"><div className="h-full bg-[#4A90D9] rounded-full" style={{ width: `${Math.min(100,(todayWater/waterTarget)*100)}%` }}/></div>
             </div>
           </div>
 
@@ -547,10 +578,10 @@ export default function Dashboard() {
           <div className="bg-white border border-[#EDEDEA] rounded-xl p-4">
             <div className="flex justify-between items-center mb-2">
               <h3 className="text-sm font-semibold text-[#1E1E1C]">💧 Water</h3>
-              <span className="text-sm font-bold text-[#4A90D9]">{nutritionView === 'day' ? `${dateWater}/80 oz` : `${dateWater} oz total`}</span>
+              <span className="text-sm font-bold text-[#4A90D9]">{nutritionView === 'day' ? `${dateWater}/${waterTarget} oz` : `${dateWater} oz total`}</span>
             </div>
             {nutritionView === 'day' && (<>
-              <div className="h-2 bg-[#E0EBF5] rounded-full overflow-hidden mb-3"><div className="h-full bg-[#4A90D9] rounded-full" style={{ width: `${Math.min(100,(dateWater/80)*100)}%` }}/></div>
+              <div className="h-2 bg-[#E0EBF5] rounded-full overflow-hidden mb-3"><div className="h-full bg-[#4A90D9] rounded-full" style={{ width: `${Math.min(100,(dateWater/waterTarget)*100)}%` }}/></div>
               {isToday(selectedDate) && <div className="flex gap-2">{WATER_AMOUNTS.map(oz => <button key={oz} onClick={() => logWater(oz)} className="flex-1 bg-[#E0EBF5] text-[#4A90D9] py-2 rounded-lg text-xs font-semibold hover:bg-[#D0E0F0] transition-colors cursor-pointer">+{oz}oz</button>)}</div>}
             </>)}
           </div>
@@ -666,7 +697,23 @@ export default function Dashboard() {
         <div className="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center z-50 px-4 pb-4" onClick={e => { if (e.target === e.currentTarget) setModal(null) }}>
           <div className="bg-white rounded-2xl w-full max-w-md p-5 space-y-4 max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center"><h2 className="text-base font-bold text-[#1E1E1C]">Log Injection</h2><button onClick={() => setModal(null)} className="text-[#B0B0A8] hover:text-[#1E1E1C] cursor-pointer text-lg">✕</button></div>
-            <div className="bg-[#F5F5F2] rounded-lg px-4 py-2.5"><p className="text-[10px] text-[#B0B0A8]">Medication</p><p className="text-sm font-semibold text-[#1E1E1C]">{profile?.medication} · {profile?.dose}</p></div>
+            <div className="bg-[#F5F5F2] rounded-lg px-4 py-2.5"><p className="text-[10px] text-[#B0B0A8]">Medication</p><p className="text-sm font-semibold text-[#1E1E1C]">{profile?.medication}</p></div>
+            {/* Dose selector */}
+            <div>
+              <p className="text-[10px] font-semibold text-[#B0B0A8] uppercase tracking-wider mb-2">Dose</p>
+              <div className="flex flex-wrap gap-1.5">
+                {(MEDICATION_DOSES[profile?.medication || ''] || [0.25, 0.5, 1.0, 2.0]).map(d => (
+                  <button key={d} onClick={() => { setMedDose(`${d}mg`); setCustomDose('') }}
+                    className={`text-xs px-3 py-2 rounded-lg border cursor-pointer ${medDose === `${d}mg` ? 'border-[#2D5A3D] bg-[#E8F0EB] text-[#2D5A3D] font-semibold' : 'border-[#EDEDEA] text-[#8B8B83]'}`}>{d} mg</button>
+                ))}
+                <button onClick={() => { setMedDose('custom'); setCustomDose('') }}
+                  className={`text-xs px-3 py-2 rounded-lg border cursor-pointer ${medDose === 'custom' ? 'border-[#2D5A3D] bg-[#E8F0EB] text-[#2D5A3D] font-semibold' : 'border-[#EDEDEA] text-[#8B8B83]'}`}>Custom</button>
+              </div>
+              {medDose === 'custom' && (
+                <input type="number" value={customDose} onChange={e => setCustomDose(e.target.value)} placeholder="Enter dose in mg" autoFocus
+                  className="w-full mt-2 px-3 py-2.5 rounded-lg border border-[#EDEDEA] text-sm text-[#1E1E1C] outline-none focus:border-[#2D5A3D] placeholder:text-[#C5C5BE]"/>
+              )}
+            </div>
             <div><p className="text-[10px] font-semibold text-[#B0B0A8] uppercase tracking-wider mb-2">Injection Site</p><div className="grid grid-cols-2 gap-2">{INJECTION_SITES.map(s => <button key={s} onClick={() => setInjectionSite(s)} className={`text-xs px-3 py-2.5 rounded-lg border cursor-pointer ${injectionSite===s?'border-[#2D5A3D] bg-[#E8F0EB] text-[#2D5A3D] font-semibold':'border-[#EDEDEA] text-[#8B8B83]'}`}>{s}</button>)}</div></div>
             <input type="text" value={medNotes} onChange={e => setMedNotes(e.target.value)} placeholder="Notes (optional)" className="w-full px-3 py-2.5 rounded-lg border border-[#EDEDEA] text-sm text-[#1E1E1C] outline-none focus:border-[#2D5A3D] placeholder:text-[#C5C5BE]"/>
             <button onClick={logMedication} className="w-full bg-[#2D5A3D] text-white py-3 rounded-lg text-sm font-semibold cursor-pointer">Save</button>

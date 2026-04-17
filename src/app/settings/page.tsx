@@ -9,11 +9,15 @@ interface Profile {
   name: string; medication: string; dose: string; start_date: string
   current_weight: string; goal_weight: string; primary_goal: string
   biggest_challenge: string; exercise_level: string
+  protein_target_g?: number | null; water_target_oz?: number | null
+  injection_day?: string | null; injection_time?: string | null
 }
 
 const MEDICATIONS = ['Semaglutide (Ozempic)', 'Semaglutide (Wegovy)', 'Tirzepatide (Mounjaro)', 'Tirzepatide (Zepbound)', 'Liraglutide (Saxenda)', 'Dulaglutide (Trulicity)', 'Other']
 const GOALS = ['Lose weight', 'Manage blood sugar', 'Reduce appetite', 'Improve health markers', 'Other']
 const EXERCISE_LEVELS = ['Sedentary', 'Light (1-2x/week)', 'Moderate (3-4x/week)', 'Active (5+/week)']
+const DAYS_OF_WEEK = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+const INJECTION_TIMES = ['Morning', 'Afternoon', 'Evening', 'Night']
 
 export default function Settings() {
   const router = useRouter()
@@ -33,6 +37,10 @@ export default function Settings() {
   const [goalWeight, setGoalWeight] = useState('')
   const [primaryGoal, setPrimaryGoal] = useState('')
   const [exerciseLevel, setExerciseLevel] = useState('')
+  const [proteinTargetG, setProteinTargetG] = useState('')
+  const [waterTargetOz, setWaterTargetOz] = useState('')
+  const [injectionDay, setInjectionDay] = useState('')
+  const [injectionTime, setInjectionTime] = useState('')
 
   // Password change
   const [showPasswordChange, setShowPasswordChange] = useState(false)
@@ -67,6 +75,10 @@ export default function Settings() {
         setGoalWeight(p.goal_weight || '')
         setPrimaryGoal(p.primary_goal || '')
         setExerciseLevel(p.exercise_level || '')
+        setProteinTargetG(p.protein_target_g ? String(p.protein_target_g) : '')
+        setWaterTargetOz(p.water_target_oz ? String(p.water_target_oz) : '')
+        setInjectionDay(p.injection_day || '')
+        setInjectionTime(p.injection_time || '')
       }
       setLoading(false)
     }
@@ -80,6 +92,10 @@ export default function Settings() {
       name, medication, dose, start_date: startDate,
       current_weight: currentWeight, goal_weight: goalWeight,
       primary_goal: primaryGoal, exercise_level: exerciseLevel,
+      protein_target_g: proteinTargetG ? parseInt(proteinTargetG) : null,
+      water_target_oz: waterTargetOz ? parseInt(waterTargetOz) : null,
+      injection_day: injectionDay || null,
+      injection_time: injectionTime || null,
     }).eq('id', userId)
     setSaving(false)
     setSaved(true)
@@ -206,6 +222,24 @@ export default function Settings() {
                   className="w-full mt-1 px-3 py-2.5 rounded-lg border border-[#EDEDEA] text-sm text-[#1E1E1C] outline-none focus:border-[#2D5A3D]"/>
               </div>
             </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-[10px] font-semibold text-[#B0B0A8] uppercase tracking-wider">Injection Day</label>
+                <select value={injectionDay} onChange={e => setInjectionDay(e.target.value)}
+                  className="w-full mt-1 px-3 py-2.5 rounded-lg border border-[#EDEDEA] text-sm text-[#1E1E1C] outline-none focus:border-[#2D5A3D] bg-white">
+                  <option value="">Not set</option>
+                  {DAYS_OF_WEEK.map(d => <option key={d} value={d}>{d}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="text-[10px] font-semibold text-[#B0B0A8] uppercase tracking-wider">Injection Time</label>
+                <select value={injectionTime} onChange={e => setInjectionTime(e.target.value)}
+                  className="w-full mt-1 px-3 py-2.5 rounded-lg border border-[#EDEDEA] text-sm text-[#1E1E1C] outline-none focus:border-[#2D5A3D] bg-white">
+                  <option value="">Not set</option>
+                  {INJECTION_TIMES.map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
+              </div>
+            </div>
           </div>
 
           {/* Goals */}
@@ -239,6 +273,27 @@ export default function Settings() {
                   <button key={l} onClick={() => setExerciseLevel(l)}
                     className={`text-xs px-3 py-1.5 rounded-full border cursor-pointer transition-colors ${exerciseLevel === l ? 'border-[#2D5A3D] bg-[#E8F0EB] text-[#2D5A3D] font-semibold' : 'border-[#EDEDEA] text-[#8B8B83]'}`}>{l}</button>
                 ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Daily Targets */}
+          <div className="bg-white border border-[#EDEDEA] rounded-xl p-5 space-y-4">
+            <h2 className="text-sm font-semibold text-[#1E1E1C]">Daily Targets</h2>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-[10px] font-semibold text-[#B0B0A8] uppercase tracking-wider">Protein Target (g)</label>
+                <input type="number" value={proteinTargetG} onChange={e => setProteinTargetG(e.target.value)}
+                  placeholder={goalWeight ? String(Math.round((parseFloat(goalWeight) / 2.205) * 1.4)) : '100'}
+                  className="w-full mt-1 px-3 py-2.5 rounded-lg border border-[#EDEDEA] text-sm text-[#1E1E1C] outline-none focus:border-[#2D5A3D] placeholder:text-[#C5C5BE]"/>
+                <p className="text-[9px] text-[#B0B0A8] mt-1">Leave blank to auto-calculate</p>
+              </div>
+              <div>
+                <label className="text-[10px] font-semibold text-[#B0B0A8] uppercase tracking-wider">Water Target (oz)</label>
+                <input type="number" value={waterTargetOz} onChange={e => setWaterTargetOz(e.target.value)}
+                  placeholder="80"
+                  className="w-full mt-1 px-3 py-2.5 rounded-lg border border-[#EDEDEA] text-sm text-[#1E1E1C] outline-none focus:border-[#2D5A3D] placeholder:text-[#C5C5BE]"/>
+                <p className="text-[9px] text-[#B0B0A8] mt-1">Default: 80 oz</p>
               </div>
             </div>
           </div>

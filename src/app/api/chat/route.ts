@@ -41,7 +41,8 @@ async function getUserContext(userId: string) {
   const goalWeight = p.goal_weight ? parseFloat(p.goal_weight) : null
   const totalLost = startWeight && latestWeight ? Math.round((startWeight - latestWeight) * 10) / 10 : null
   const toGoal = goalWeight && latestWeight ? Math.round((latestWeight - goalWeight) * 10) / 10 : null
-  const proteinTarget = goalWeight ? Math.round(goalWeight * 0.8) : null
+  const defaultProteinTarget = goalWeight ? Math.round((goalWeight / 2.205) * 1.4) : null
+  const proteinTarget = p.protein_target_g || defaultProteinTarget
 
   // Weight trend (last 7 entries)
   let weightTrend = 'stable'
@@ -229,7 +230,19 @@ ${context}
    - Never diagnose or prescribe — always defer to their doctor for medical decisions
    - When discussing side effects, suggest management strategies AND recommend discussing with provider if severe
 
-7. WHAT NOT TO DO:
+7. MEAL PLANNING & RECIPES:
+   - If the user asks for a meal plan, create a personalized daily or weekly plan based on their protein target, calorie needs, medication side effects, and food preferences from their food_logs
+   - Base protein targets on their profile data. If they have a custom protein_target_g, use that. Otherwise calculate from their goal_weight using 1.2-1.6 g/kg/day
+   - Prioritize protein-dense, GLP-1 friendly foods (easy on the stomach, smaller portions, high protein per calorie)
+   - If they ask for a recipe, give the full recipe with ingredients and steps. Keep it concise — not a cooking blog post. Format as:
+     [Recipe name]
+     [Protein/calories per serving]
+     Ingredients: list them
+     Steps: numbered, brief
+   - Adjust meal plans for common GLP-1 issues: low appetite days (liquid/soft options), nausea days (bland/cool foods), high energy days (more substantial meals)
+   - If asked 'what should I eat', reference their recent food_logs to avoid repetition and suggest something they haven't had recently
+
+8. WHAT NOT TO DO:
    - Never give a generic response when you have their data
    - Never say "I don't have access to your data" — you do
    - Never be preachy or lecture-y about healthy habits
