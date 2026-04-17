@@ -159,27 +159,35 @@ export default function MedicationLevelChart({ medication, dose, injectionLogs }
     return times
   }, [injectionLogs, timeRange, currentDoseMg, pk.dosingIntervalHours])
 
-  const chartData = useMemo(() => {
-    const rangeHours = timeRange === 'week' ? 168 : timeRange === 'month' ? 720 : 2160
-    const now = Date.now()
-    const startTime = now - rangeHours * 3600 * 1000
-    const points: { time: number; level: number; date: Date }[] = []
-    const step = rangeHours / 200
+  // The chart shows past + future. "Now" sits at ~75% of the x-axis so you
+  // can see the projected decay after the most recent injection.
+  const pastHours = timeRange === 'week' ? 168 : timeRange === 'month' ? 720 : 2160
+  const futureHours = Math.round(pastHours * 0.33) // 33% future projection
+  const totalHours = pastHours + futureHours
 
-    for (let h = 0; h <= rangeHours; h += step) {
+  const chartData = useMemo(() => {
+    const now = Date.now()
+    const startTime = now - pastHours * 3600 * 1000
+    const points: { time: number; level: number; date: Date; isFuture: boolean }[] = []
+    const step = totalHours / 250
+
+    for (let h = 0; h <= totalHours; h += step) {
       const pointTime = startTime + h * 3600 * 1000
       let totalConcentration = 0
       for (const inj of injectionTimes) {
         const hoursSinceInjection = (pointTime - inj.time) / (3600 * 1000)
         totalConcentration += singleDoseConcentration(hoursSinceInjection, inj.dose)
       }
-      points.push({ time: h, level: totalConcentration, date: new Date(pointTime) })
+      points.push({ time: h, level: totalConcentration, date: new Date(pointTime), isFuture: h > pastHours })
     }
     return points
-  }, [injectionTimes, timeRange, ke, ka])
+  }, [injectionTimes, pastHours, totalHours, ke, ka])
 
   const maxLevel = Math.max(...chartData.map(p => p.level), 0.01)
-  const currentLevel = chartData[chartData.length - 1]?.level || 0
+
+  // Current level = the point closest to "now"
+  const nowIdx = chartData.findIndex(p => p.isFuture)
+  const currentLevel = nowIdx > 0 ? chartData[nowIdx - 1].level : chartData[chartData.length - 1]?.level || 0
   const currentPercent = maxLevel > 0 ? Math.round((currentLevel / maxLevel) * 100) : 0
 
   // Next shot countdown
@@ -196,37 +204,47 @@ export default function MedicationLevelChart({ medication, dose, injectionLogs }
   const plotW = width - padding.left - padding.right
   const plotH = height - padding.top - padding.bottom
 
-  // Build smooth curve points
-  const curvePoints = useMemo(() => {
+  const now = Date.now()
+  const startTime = now - pastHours * 3600 * 1000
+  const nowFrac = pastHours / totalHours // where "now" sits on the x-axis
+
+  // Build smooth curve points — split into past (solid) and future (dashed)
+  const allCurvePoints = useMemo(() => {
     return chartData.map(p => ({
-      x: padding.left + (p.time / (chartData[chartData.length - 1]?.time || 1)) * plotW,
+      x: padding.left + (p.time / totalHours) * plotW,
       y: padding.top + plotH - (p.level / maxLevel) * plotH,
+      isFuture: p.isFuture,
     }))
-  }, [chartData, maxLevel, plotW, plotH])
+  }, [chartData, maxLevel, plotW, plotH, totalHours])
 
-  const curvePath = smoothPath(curvePoints)
-  const lastPt = curvePoints[curvePoints.length - 1]
+  const pastPoints = allCurvePoints.filter(p => !p.isFuture)
+  const futurePoints = allCurvePoints.filter(p => p.isFuture)
+  // Overlap: include last past point as first future point for continuity
+  const futureWithBridge = pastPoints.length > 0 ? [pastPoints[pastPoints.length - 1], ...futurePoints] : futurePoints
 
-  // Area path: curve + close at bottom
-  const areaPath = curvePath +
+  const pastPath = smoothPath(pastPoints)
+  const futurePath = smoothPath(futureWithBridge)
+
+  // Now dot is at the boundary
+  const nowPt = pastPoints[pastPoints.length - 1]
+
+  // Area path uses the full curve (past + future)
+  const fullPath = smoothPath(allCurvePoints)
+  const areaPath = fullPath +
     ` L${padding.left + plotW},${padding.top + plotH}` +
     ` L${padding.left},${padding.top + plotH} Z`
 
-  // X-axis labels
-  const rangeHours = timeRange === 'week' ? 168 : timeRange === 'month' ? 720 : 2160
-  const now = Date.now()
-  const startTime = now - rangeHours * 3600 * 1000
-
+  // X-axis labels spanning past + future
   const xLabels = useMemo(() => {
     const labels: { x: number; label: string }[] = []
-    const count = timeRange === 'week' ? 7 : timeRange === 'month' ? 4 : 6
+    const count = timeRange === 'week' ? 8 : timeRange === 'month' ? 5 : 7
     for (let i = 0; i <= count; i++) {
       const frac = i / count
-      const date = new Date(startTime + frac * rangeHours * 3600 * 1000)
+      const date = new Date(startTime + frac * totalHours * 3600 * 1000)
       labels.push({ x: padding.left + frac * plotW, label: `${date.getMonth() + 1}/${date.getDate()}` })
     }
     return labels
-  }, [timeRange, startTime, rangeHours, plotW])
+  }, [timeRange, startTime, totalHours, plotW])
 
   const yLabels = [0, 0.5, 1].map(frac => ({
     y: padding.top + plotH - frac * plotH,
@@ -236,9 +254,8 @@ export default function MedicationLevelChart({ medication, dose, injectionLogs }
   // Injection markers
   const injectionMarkers = injectionTimes.filter(inj => inj.time >= startTime && inj.time <= now).map(inj => {
     const hoursSinceStart = (inj.time - startTime) / (3600 * 1000)
-    const x = padding.left + (hoursSinceStart / rangeHours) * plotW
-    // Calculate y position on the curve at this x
-    const frac = hoursSinceStart / rangeHours
+    const x = padding.left + (hoursSinceStart / totalHours) * plotW
+    const frac = hoursSinceStart / totalHours
     const idx = Math.round(frac * (chartData.length - 1))
     const point = chartData[Math.max(0, Math.min(idx, chartData.length - 1))]
     const y = point ? padding.top + plotH - (point.level / maxLevel) * plotH : padding.top + plotH
@@ -246,7 +263,7 @@ export default function MedicationLevelChart({ medication, dose, injectionLogs }
   })
 
   // "Now" line position
-  const nowX = padding.left + plotW
+  const nowX = padding.left + nowFrac * plotW
 
   function handleInteraction(e: React.MouseEvent<SVGSVGElement> | React.TouchEvent<SVGSVGElement>) {
     const svg = e.currentTarget
@@ -263,11 +280,12 @@ export default function MedicationLevelChart({ medication, dose, injectionLogs }
     const idx = Math.round(frac * (chartData.length - 1))
     const point = chartData[Math.max(0, Math.min(idx, chartData.length - 1))]
     if (point) {
-      const x = padding.left + (point.time / (chartData[chartData.length - 1]?.time || 1)) * plotW
+      const x = padding.left + (point.time / totalHours) * plotW
       const y = padding.top + plotH - (point.level / maxLevel) * plotH
+      const isFuture = point.isFuture
       setHoveredPoint({
         x, y,
-        time: point.date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ' at ' + point.date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }),
+        time: (isFuture ? '(projected) ' : '') + point.date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ' at ' + point.date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }),
         level: point.level.toFixed(2) + ' mg',
       })
     }
@@ -342,11 +360,17 @@ export default function MedicationLevelChart({ medication, dose, injectionLogs }
               stroke="#F0F0ED" strokeWidth="0.5" />
           ))}
 
+          {/* Future zone shading */}
+          <rect x={nowX} y={padding.top} width={padding.left + plotW - nowX} height={plotH} fill="#F5F5F2" opacity="0.5" />
+
           {/* Area fill */}
           <path d={areaPath} fill="url(#medAreaGrad)" />
 
-          {/* Smooth curve */}
-          <path d={curvePath} fill="none" stroke={pk.color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+          {/* Past curve (solid) */}
+          <path d={pastPath} fill="none" stroke={pk.color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+
+          {/* Future curve (dashed) */}
+          {futurePath && <path d={futurePath} fill="none" stroke={pk.color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" strokeDasharray="6,4" opacity="0.6" />}
 
           {/* Injection markers — larger and more visible */}
           {injectionMarkers.map((m, i) => (
@@ -362,10 +386,10 @@ export default function MedicationLevelChart({ medication, dose, injectionLogs }
           <text x={nowX} y={padding.top - 6} textAnchor="middle" fontSize="8" fontWeight="600" fill={pk.color}>Now</text>
 
           {/* Pulsing "now" dot */}
-          {lastPt && (
+          {nowPt && (
             <g filter="url(#medGlow)">
-              <circle cx={lastPt.x} cy={lastPt.y} r="4" fill={pk.color} opacity="0.3" style={{ animation: 'medPulse 2s ease-in-out infinite' }} />
-              <circle cx={lastPt.x} cy={lastPt.y} r="4" fill="white" stroke={pk.color} strokeWidth="2.5" />
+              <circle cx={nowPt.x} cy={nowPt.y} r="4" fill={pk.color} opacity="0.3" style={{ animation: 'medPulse 2s ease-in-out infinite' }} />
+              <circle cx={nowPt.x} cy={nowPt.y} r="4" fill="white" stroke={pk.color} strokeWidth="2.5" />
             </g>
           )}
 
