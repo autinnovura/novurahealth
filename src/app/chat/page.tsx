@@ -7,13 +7,12 @@ import VoiceInput from '../components/VoiceInput'
 
 interface Message { role: 'user' | 'assistant'; content: string }
 
-const QUICK_PROMPTS = [
-  "What should I eat next?",
-  "How's my progress looking?",
-  "Help with side effects",
-  "Am I hitting my protein?",
-  "What should I focus on this week?",
-  "Give me a meal plan for today",
+const QUICK_ACTIONS = [
+  { emoji: '🍽️', label: 'What should I eat?', prompt: 'What should I eat right now?' },
+  { emoji: '💉', label: 'Log injection', prompt: 'I just took my injection' },
+  { emoji: '⚖️', label: 'Log weight', prompt: 'Log my weight' },
+  { emoji: '📊', label: "How's my progress?", prompt: 'How does my progress look?' },
+  { emoji: '🥤', label: 'Protein ideas', prompt: 'Give me high protein snack ideas' },
 ]
 
 export default function ChatPage() {
@@ -145,10 +144,10 @@ function Chat() {
               I know your data — meals, weight, meds, all of it. Ask me anything about your journey.
             </p>
             <div className="flex flex-wrap justify-center gap-2">
-              {QUICK_PROMPTS.map(q => (
-                <button key={q} onClick={() => sendMessage(q)}
-                  className="text-xs px-3.5 py-2 rounded-full border border-[#EDEDEA] bg-white text-[#6B6B65] cursor-pointer hover:border-[#2D5A3D] hover:text-[#2D5A3D] transition-colors shadow-sm">
-                  {q}
+              {QUICK_ACTIONS.map(q => (
+                <button key={q.label} onClick={() => sendMessage(q.prompt)}
+                  className="text-xs px-3.5 py-2.5 rounded-full border border-[#2D5A3D]/20 bg-[#FAFAF7] text-[#2D5A3D] cursor-pointer hover:border-[#2D5A3D] hover:bg-[#E8F0EB] transition-colors shadow-sm flex items-center gap-1.5">
+                  <span>{q.emoji}</span> {q.label}
                 </button>
               ))}
             </div>
@@ -192,6 +191,16 @@ function Chat() {
 
       {/* Input */}
       <div className="shrink-0 bg-white border-t border-[#EDEDEA] px-4 py-3 max-w-2xl mx-auto w-full mb-16">
+        {messages.length > 0 && (
+          <div className="flex gap-2 overflow-x-auto pb-2 mb-2 scrollbar-hide" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+            {QUICK_ACTIONS.map(q => (
+              <button key={q.label} onClick={() => sendMessage(q.prompt)} disabled={loading}
+                className="shrink-0 text-[11px] px-3 py-1.5 rounded-full border border-[#2D5A3D]/20 bg-[#FAFAF7] text-[#2D5A3D] cursor-pointer hover:border-[#2D5A3D] hover:bg-[#E8F0EB] transition-colors disabled:opacity-40 flex items-center gap-1">
+                <span>{q.emoji}</span> {q.label}
+              </button>
+            ))}
+          </div>
+        )}
         <div className="flex gap-2">
           <input
             ref={inputRef}
