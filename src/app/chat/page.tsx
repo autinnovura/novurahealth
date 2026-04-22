@@ -4,6 +4,8 @@ import { useState, useEffect, useRef, useCallback, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '../lib/supabase'
 import VoiceInput from '../components/VoiceInput'
+import BottomNav from '../components/BottomNav'
+import { Send, ArrowLeft, Leaf, Sparkles } from 'lucide-react'
 
 interface Message { role: 'user' | 'assistant'; content: string }
 
@@ -17,7 +19,15 @@ const QUICK_ACTIONS = [
 
 export default function ChatPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen bg-[#FAFAF7] flex items-center justify-center"><div className="w-7 h-7 border-2 border-[#2D5A3D] border-t-transparent rounded-full animate-spin"/></div>}>
+    <Suspense fallback={
+      <div className="min-h-screen bg-[#FAFAF7] flex items-center justify-center" style={{ fontFamily: 'var(--font-inter)' }}>
+        <div className="flex flex-col items-center gap-4">
+          <div className="h-12 w-48 rounded-2xl bg-gradient-to-r from-[#EAF2EB] via-[#F5F8F3] to-[#EAF2EB] animate-pulse" />
+          <div className="h-4 w-32 rounded-xl bg-gradient-to-r from-[#EAF2EB] via-[#F5F8F3] to-[#EAF2EB] animate-pulse" />
+          <div className="h-4 w-24 rounded-xl bg-gradient-to-r from-[#EAF2EB] via-[#F5F8F3] to-[#EAF2EB] animate-pulse" />
+        </div>
+      </div>
+    }>
       <Chat />
     </Suspense>
   )
@@ -111,42 +121,59 @@ function Chat() {
   }, [initialLoading, userId, searchParams, sendMessage])
 
   if (initialLoading) {
-    return <div className="min-h-screen bg-[#FAFAF7] flex items-center justify-center"><div className="w-7 h-7 border-2 border-[#2D5A3D] border-t-transparent rounded-full animate-spin"/></div>
+    return (
+      <div className="min-h-screen bg-[#FAFAF7] flex items-center justify-center" style={{ fontFamily: 'var(--font-inter)' }}>
+        <div className="flex flex-col items-center gap-4">
+          <div className="h-12 w-48 rounded-2xl bg-gradient-to-r from-[#EAF2EB] via-[#F5F8F3] to-[#EAF2EB] animate-pulse" />
+          <div className="h-4 w-32 rounded-xl bg-gradient-to-r from-[#EAF2EB] via-[#F5F8F3] to-[#EAF2EB] animate-pulse" />
+          <div className="h-4 w-24 rounded-xl bg-gradient-to-r from-[#EAF2EB] via-[#F5F8F3] to-[#EAF2EB] animate-pulse" />
+        </div>
+      </div>
+    )
   }
 
   return (
-    <div className="min-h-screen bg-[#FAFAF7] flex flex-col pb-20">
+    <div className="min-h-screen bg-[#FAFAF7] flex flex-col pb-24" style={{ fontFamily: 'var(--font-inter)' }}>
       {/* Header */}
-      <header className="bg-[#2D5A3D] px-5 py-4 shrink-0">
-        <div className="max-w-2xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-full bg-white/15 flex items-center justify-center">
-              <span className="text-lg">🌿</span>
+      <header className="relative overflow-hidden shrink-0">
+        <div className="absolute inset-0 bg-gradient-to-br from-white via-[#F5F8F3] to-[#EAF2EB]" />
+        <div className="relative px-5 py-4">
+          <div className="max-w-2xl mx-auto flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-[#1F4B32] to-[#2D6B45] flex items-center justify-center shadow-[0_4px_24px_-8px_rgba(31,75,50,0.08)]">
+                <Leaf className="w-5 h-5 text-[#7FFFA4]" strokeWidth={2} />
+              </div>
+              <div>
+                <h1 className="text-[#0D1F16] font-semibold text-base">Nova</h1>
+                <p className="text-[#6B7A72] text-[10px]">Your personal health coach</p>
+              </div>
             </div>
-            <div>
-              <h1 className="text-white font-semibold text-base">Nova</h1>
-              <p className="text-white/40 text-[10px]">Your personal health coach</p>
-            </div>
+            <button onClick={() => router.push('/dashboard')} className="flex items-center gap-1.5 text-[#6B7A72] text-xs hover:text-[#0D1F16] cursor-pointer transition-all duration-300">
+              <ArrowLeft className="w-3.5 h-3.5" strokeWidth={2} />
+              Back
+            </button>
           </div>
-          <button onClick={() => router.push('/dashboard')} className="text-white/40 text-xs hover:text-white/70 cursor-pointer transition-colors">← Back</button>
         </div>
+        <div className="relative h-px bg-gradient-to-r from-transparent via-[#EAF2EB] to-transparent" />
       </header>
 
       {/* Messages */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-5 max-w-2xl mx-auto w-full">
         {messages.length === 0 && !loading && (
-          <div className="text-center py-12">
-            <div className="w-16 h-16 rounded-2xl bg-[#E8F0EB] flex items-center justify-center mx-auto mb-4">
-              <span className="text-3xl">🌿</span>
+          <div className="text-center py-16">
+            <div className="w-16 h-16 rounded-3xl bg-gradient-to-br from-[#1F4B32] to-[#2D6B45] flex items-center justify-center mx-auto mb-6 shadow-[0_4px_24px_-8px_rgba(31,75,50,0.08)]">
+              <Sparkles className="w-7 h-7 text-[#7FFFA4]" strokeWidth={1.5} />
             </div>
-            <h2 className="text-lg font-bold text-[#1E1E1C] mb-1">Hey, I'm Nova</h2>
-            <p className="text-sm text-[#8B8B83] mb-6 max-w-xs mx-auto">
+            <h2 className="text-2xl font-bold text-[#0D1F16] mb-2" style={{ fontFamily: 'var(--font-fraunces)' }}>
+              Hey, what&apos;s on your mind?
+            </h2>
+            <p className="text-sm text-[#6B7A72] mb-8 max-w-xs mx-auto leading-relaxed">
               I know your data — meals, weight, meds, all of it. Ask me anything about your journey.
             </p>
             <div className="flex flex-wrap justify-center gap-2">
               {QUICK_ACTIONS.map(q => (
                 <button key={q.label} onClick={() => sendMessage(q.prompt)}
-                  className="text-xs px-3.5 py-2.5 rounded-full border border-[#2D5A3D]/20 bg-[#FAFAF7] text-[#2D5A3D] cursor-pointer hover:border-[#2D5A3D] hover:bg-[#E8F0EB] transition-colors shadow-sm flex items-center gap-1.5">
+                  className="text-xs px-4 py-2.5 rounded-2xl backdrop-blur-md bg-white/60 border border-white/80 text-[#0D1F16] cursor-pointer hover:bg-white/90 hover:shadow-[0_4px_24px_-8px_rgba(31,75,50,0.08)] transition-all duration-300 flex items-center gap-1.5">
                   <span>{q.emoji}</span> {q.label}
                 </button>
               ))}
@@ -158,14 +185,14 @@ function Chat() {
           {messages.map((msg, i) => (
             <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
               {msg.role === 'assistant' && (
-                <div className="w-7 h-7 rounded-full bg-[#2D5A3D] flex items-center justify-center shrink-0 mr-2 mt-1">
-                  <span className="text-xs">🌿</span>
+                <div className="w-7 h-7 rounded-full bg-gradient-to-br from-[#1F4B32] to-[#2D6B45] flex items-center justify-center shrink-0 mr-2 mt-1">
+                  <Leaf className="w-3.5 h-3.5 text-[#7FFFA4]" strokeWidth={2} />
                 </div>
               )}
-              <div className={`max-w-[80%] px-4 py-3 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap ${
+              <div className={`max-w-[80%] px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap ${
                 msg.role === 'user'
-                  ? 'bg-[#2D5A3D] text-white rounded-br-md'
-                  : 'bg-white border border-[#EDEDEA] text-[#1E1E1C] rounded-bl-md shadow-sm'
+                  ? 'bg-gradient-to-r from-[#1F4B32] to-[#2D6B45] text-white rounded-3xl rounded-br-md'
+                  : 'bg-white border border-[#EAF2EB] text-[#0D1F16] rounded-3xl rounded-bl-md shadow-[0_4px_24px_-8px_rgba(31,75,50,0.08)]'
               }`}>
                 {msg.content}
               </div>
@@ -174,14 +201,14 @@ function Chat() {
 
           {loading && (
             <div className="flex justify-start">
-              <div className="w-7 h-7 rounded-full bg-[#2D5A3D] flex items-center justify-center shrink-0 mr-2 mt-1">
-                <span className="text-xs">🌿</span>
+              <div className="w-7 h-7 rounded-full bg-gradient-to-br from-[#1F4B32] to-[#2D6B45] flex items-center justify-center shrink-0 mr-2 mt-1">
+                <Leaf className="w-3.5 h-3.5 text-[#7FFFA4]" strokeWidth={2} />
               </div>
-              <div className="bg-white border border-[#EDEDEA] px-4 py-3 rounded-2xl rounded-bl-md shadow-sm">
+              <div className="bg-white border border-[#EAF2EB] px-4 py-3 rounded-3xl rounded-bl-md shadow-[0_4px_24px_-8px_rgba(31,75,50,0.08)]">
                 <div className="flex gap-1.5">
-                  <div className="w-2 h-2 rounded-full bg-[#B0B0A8] animate-bounce" style={{ animationDelay: '0ms' }} />
-                  <div className="w-2 h-2 rounded-full bg-[#B0B0A8] animate-bounce" style={{ animationDelay: '150ms' }} />
-                  <div className="w-2 h-2 rounded-full bg-[#B0B0A8] animate-bounce" style={{ animationDelay: '300ms' }} />
+                  <div className="w-2 h-2 rounded-full bg-[#7FFFA4] animate-bounce" style={{ animationDelay: '0ms' }} />
+                  <div className="w-2 h-2 rounded-full bg-[#7FFFA4] animate-bounce" style={{ animationDelay: '150ms' }} />
+                  <div className="w-2 h-2 rounded-full bg-[#7FFFA4] animate-bounce" style={{ animationDelay: '300ms' }} />
                 </div>
               </div>
             </div>
@@ -190,12 +217,12 @@ function Chat() {
       </div>
 
       {/* Input */}
-      <div className="shrink-0 bg-white border-t border-[#EDEDEA] px-4 py-3 max-w-2xl mx-auto w-full mb-16">
+      <div className="shrink-0 bg-white/85 backdrop-blur-xl border-t border-[#EAF2EB] px-4 py-3 max-w-2xl mx-auto w-full">
         {messages.length > 0 && (
           <div className="flex gap-2 overflow-x-auto pb-2 mb-2 scrollbar-hide" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
             {QUICK_ACTIONS.map(q => (
               <button key={q.label} onClick={() => sendMessage(q.prompt)} disabled={loading}
-                className="shrink-0 text-[11px] px-3 py-1.5 rounded-full border border-[#2D5A3D]/20 bg-[#FAFAF7] text-[#2D5A3D] cursor-pointer hover:border-[#2D5A3D] hover:bg-[#E8F0EB] transition-colors disabled:opacity-40 flex items-center gap-1">
+                className="shrink-0 text-[11px] px-3 py-1.5 rounded-2xl backdrop-blur-md bg-white/60 border border-white/80 text-[#0D1F16] cursor-pointer hover:bg-white/90 hover:shadow-[0_4px_24px_-8px_rgba(31,75,50,0.08)] transition-all duration-300 disabled:opacity-40 flex items-center gap-1">
                 <span>{q.emoji}</span> {q.label}
               </button>
             ))}
@@ -217,24 +244,22 @@ function Chat() {
             onChange={e => setInput(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), sendMessage())}
             placeholder="Ask Nova anything..."
-            className="flex-1 px-4 py-3 rounded-xl border border-[#EDEDEA] bg-[#FAFAF7] text-sm text-[#1E1E1C] outline-none focus:border-[#2D5A3D] placeholder:text-[#C5C5BE]"
+            className="flex-1 px-4 py-3 rounded-3xl border border-[#EAF2EB] bg-[#FAFAF7] text-sm text-[#0D1F16] outline-none focus:border-[#1F4B32] placeholder:text-[#6B7A72]/50 shadow-[inset_0_1px_3px_rgba(31,75,50,0.04)] transition-all duration-300"
           />
           <VoiceInput onResult={(text) => setInput(text)} />
           <button type="submit" disabled={loading || !input.trim()}
-            className="bg-[#2D5A3D] text-white px-5 py-3 rounded-xl text-sm font-semibold cursor-pointer disabled:opacity-30 transition-opacity active:scale-95">
-            Send
+            className={`px-5 py-3 rounded-3xl text-sm font-semibold cursor-pointer transition-all duration-300 active:scale-95 text-white ${
+              input.trim()
+                ? 'bg-gradient-to-r from-[#1F4B32] to-[#2D6B45] shadow-[0_4px_24px_-8px_rgba(31,75,50,0.3)]'
+                : 'bg-gradient-to-r from-[#1F4B32] to-[#2D6B45] opacity-30'
+            }`}>
+            <Send className="w-4 h-4" strokeWidth={2} />
           </button>
         </form>
       </div>
 
       {/* Bottom nav */}
-      <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-[#EDEDEA] px-4 py-2 flex justify-around z-50">
-        <a href="/dashboard" className="flex flex-col items-center gap-0.5 text-[#B0B0A8] hover:text-[#2D5A3D] transition-colors"><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-4 0h4"/></svg><span className="text-[10px] font-medium">Home</span></a>
-        <a href="/maintenance" className="flex flex-col items-center gap-0.5 text-[#B0B0A8] hover:text-[#2D5A3D] transition-colors"><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg><span className="text-[10px] font-medium">Transition</span></a>
-        <a href="/chat" className="flex flex-col items-center gap-0.5 text-[#2D5A3D]"><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg><span className="text-[10px] font-semibold">Nova</span></a>
-        <a href="/savings" className="flex flex-col items-center gap-0.5 text-[#B0B0A8] hover:text-[#2D5A3D] transition-colors"><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg><span className="text-[10px] font-medium">Savings</span></a>
-        <a href="/settings" className="flex flex-col items-center gap-0.5 text-[#B0B0A8] hover:text-[#2D5A3D] transition-colors"><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg><span className="text-[10px] font-medium">Settings</span></a>
-      </nav>
+      <BottomNav />
     </div>
   )
 }

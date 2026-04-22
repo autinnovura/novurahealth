@@ -9,11 +9,11 @@ import LogEntryMenu from '../components/LogEntryMenu'
 import { motion } from 'framer-motion'
 import { AreaChart, Area, ResponsiveContainer, YAxis } from 'recharts'
 import {
-  Home, TrendingUp, MessageCircle, DollarSign, Settings,
   Utensils, Syringe, Scale, Dumbbell, Stethoscope,
   Droplets, ChevronLeft, ChevronRight, Plus, LogOut,
-  Flame, Sparkles
+  Flame, Sparkles, TrendingUp, MessageCircle
 } from 'lucide-react'
+import BottomNav from '../components/BottomNav'
 
 // ── Types ──────────────────────────────────────────────
 interface Profile { name: string; medication: string; dose: string; start_date: string; current_weight: string; goal_weight: string; primary_goal: string; biggest_challenge: string; exercise_level: string; first_run_complete?: boolean | null; protein_target_g?: number | null; water_target_oz?: number | null; injection_day?: string | null; injection_time?: string | null }
@@ -1245,22 +1245,7 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* BOTTOM NAV — frosted glass */}
-      <nav className="fixed bottom-0 left-0 right-0 bg-white/80 backdrop-blur-xl border-t border-[#EAF2EB] px-4 py-2.5 flex justify-around z-50">
-        {[
-          { href: '/dashboard', icon: Home, label: 'Home', active: true },
-          { href: '/maintenance', icon: TrendingUp, label: 'Transition', active: false },
-          { href: '/chat', icon: MessageCircle, label: 'Nova', active: false },
-          { href: '/savings', icon: DollarSign, label: 'Savings', active: false },
-          { href: '/settings', icon: Settings, label: 'Settings', active: false },
-        ].map(item => (
-          <a key={item.label} href={item.href} className={`flex flex-col items-center gap-1 transition-all duration-300 ${item.active ? 'text-[#1F4B32]' : 'text-[#6B7A72]/40 hover:text-[#6B7A72]'}`}>
-            <item.icon className="w-5 h-5" strokeWidth={1.5} />
-            <span className="text-[10px] font-medium">{item.label}</span>
-            {item.active && <div className="w-1 h-1 rounded-full bg-[#7FFFA4] shadow-[0_0_6px_2px_rgba(127,255,164,0.4)]" />}
-          </a>
-        ))}
-      </nav>
+      <BottomNav />
     </div>
   )
 }

@@ -144,20 +144,20 @@ export default function Onboarding() {
   }
 
   return (
-    <div className="min-h-screen bg-[#FAFAF7] flex flex-col">
+    <div className="min-h-screen bg-gradient-to-br from-white via-[#F5F8F3] to-[#EAF2EB] flex flex-col" style={{ fontFamily: 'var(--font-inter)' }}>
       {/* Header */}
-      <header className="bg-[#2D5A3D] px-5 pt-5 pb-4 shrink-0">
+      <header className="px-5 pt-5 pb-4 shrink-0">
         <div className="max-w-lg mx-auto">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-full bg-white/15 flex items-center justify-center"><span className="text-sm">🌿</span></div>
-              <span className="text-white/80 text-sm font-medium">NovuraHealth</span>
+              <span className="text-sm font-semibold text-[#1F4B32] tracking-tight">NovuraHealth</span>
             </div>
-            <span className="text-white/40 text-xs">{step} of {TOTAL_STEPS}</span>
+            <span className="text-xs text-[#6B7A72]/60">{step} of {TOTAL_STEPS}</span>
           </div>
           <div className="flex gap-1">
             {Array.from({ length: TOTAL_STEPS }, (_, i) => (
-              <div key={i} className={`flex-1 h-1 rounded-full transition-all duration-300 ${i < step ? 'bg-white/80' : 'bg-white/15'}`} />
+              <div key={i} className={`flex-1 h-1 rounded-full transition-all duration-300 ${i < step ? 'bg-gradient-to-r from-[#7FFFA4] to-[#1F4B32]' : 'bg-[#EAF2EB]'}`}
+                style={i < step ? { boxShadow: '0 0 8px rgba(127,255,164,0.3)' } : undefined} />
             ))}
           </div>
         </div>
@@ -165,7 +165,7 @@ export default function Onboarding() {
 
       {/* Content */}
       <div className="flex-1 px-5 py-6 max-w-lg mx-auto w-full flex flex-col">
-        <h2 className="text-xl font-bold text-[#1E1E1C] mb-1">{stepTitles[step]}</h2>
+        <h2 className="text-xl font-bold text-[#0D1F16] mb-1" style={{ fontFamily: 'var(--font-fraunces)' }}>{stepTitles[step]}</h2>
 
         <div className="flex-1 mt-4">
 
@@ -174,7 +174,7 @@ export default function Onboarding() {
             <input type="text" value={name} onChange={e => setName(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && canAdvance() && next()}
               placeholder="First name" autoFocus
-              className="w-full px-4 py-4 rounded-xl border-2 border-[#EDEDEA] text-lg text-[#1E1E1C] font-medium outline-none focus:border-[#2D5A3D] placeholder:text-[#C5C5BE] transition-colors" />
+              className="w-full px-4 py-4 rounded-2xl border-2 border-[#EAF2EB] text-lg text-[#0D1F16] font-medium outline-none focus:border-[#1F4B32] placeholder:text-[#6B7A72]/40 transition-colors" />
           )}
 
           {/* STEP 2: Medication */}
@@ -182,9 +182,9 @@ export default function Onboarding() {
             <div className="space-y-2">
               {MEDICATIONS.map(m => (
                 <button key={m.label} onClick={() => { setMedication(m.label); setDose(''); setCustomDose('') }}
-                  className={`w-full flex items-center justify-between px-4 py-3.5 rounded-xl border-2 cursor-pointer transition-all ${medication === m.label ? 'border-[#2D5A3D] bg-[#E8F0EB]' : 'border-[#EDEDEA] bg-white hover:border-[#B0B0A8]'}`}>
-                  <span className={`text-sm ${medication === m.label ? 'text-[#2D5A3D] font-semibold' : 'text-[#1E1E1C]'}`}>{m.label}</span>
-                  {m.sub && <span className="text-xs text-[#B0B0A8]">{m.sub}</span>}
+                  className={`w-full flex items-center justify-between px-4 py-3.5 rounded-3xl border-2 cursor-pointer transition-all ${medication === m.label ? 'border-[#1F4B32] bg-[#EAF2EB] shadow-[0_4px_24px_-8px_rgba(31,75,50,0.08)]' : 'border-[#EAF2EB] bg-white hover:border-[#6B7A72]/30'}`}>
+                  <span className={`text-sm ${medication === m.label ? 'text-[#1F4B32] font-semibold' : 'text-[#0D1F16]'}`}>{m.label}</span>
+                  {m.sub && <span className="text-xs text-[#6B7A72]">{m.sub}</span>}
                 </button>
               ))}
             </div>
@@ -193,24 +193,24 @@ export default function Onboarding() {
           {/* STEP 3: Dosage */}
           {step === 3 && (
             <div className="space-y-3">
-              <p className="text-xs text-[#8B8B83] mb-2">{medication} doses (mg)</p>
+              <p className="text-xs text-[#6B7A72] mb-2">{medication} doses (mg)</p>
               {DOSES[medication]?.length > 0 && (
                 <div className="flex flex-wrap gap-2">
                   {DOSES[medication].map(d => (
                     <button key={d} onClick={() => { setDose(d); setCustomDose('') }}
-                      className={`px-5 py-3 rounded-xl border-2 text-sm font-semibold cursor-pointer transition-all ${dose === d ? 'border-[#2D5A3D] bg-[#E8F0EB] text-[#2D5A3D]' : 'border-[#EDEDEA] bg-white text-[#1E1E1C] hover:border-[#B0B0A8]'}`}>
-                      {d}<span className="text-xs font-normal text-[#B0B0A8] ml-0.5">mg</span>
+                      className={`px-5 py-3 rounded-3xl border-2 text-sm font-semibold cursor-pointer transition-all ${dose === d ? 'border-[#1F4B32] bg-[#EAF2EB] text-[#1F4B32] shadow-[0_4px_24px_-8px_rgba(31,75,50,0.08)]' : 'border-[#EAF2EB] bg-white text-[#0D1F16] hover:border-[#6B7A72]/30'}`}>
+                      {d}<span className="text-xs font-normal text-[#6B7A72] ml-0.5">mg</span>
                     </button>
                   ))}
                 </div>
               )}
               <div>
-                <p className="text-xs text-[#B0B0A8] mb-1.5">{DOSES[medication]?.length > 0 ? 'Or enter custom dose' : 'Enter your dose'}</p>
+                <p className="text-xs text-[#6B7A72] mb-1.5">{DOSES[medication]?.length > 0 ? 'Or enter custom dose' : 'Enter your dose'}</p>
                 <div className="flex items-center gap-2">
                   <input type="number" autoComplete="off" value={customDose} onChange={e => { setCustomDose(e.target.value); setDose('custom') }}
                     placeholder="0.0" step="0.1"
-                    className="flex-1 px-4 py-3 rounded-xl border-2 border-[#EDEDEA] text-sm text-[#1E1E1C] outline-none focus:border-[#2D5A3D] placeholder:text-[#C5C5BE]" />
-                  <span className="text-sm text-[#8B8B83] font-medium">mg</span>
+                    className="flex-1 px-4 py-3 rounded-2xl border-2 border-[#EAF2EB] text-sm text-[#0D1F16] outline-none focus:border-[#1F4B32] placeholder:text-[#6B7A72]/40" />
+                  <span className="text-sm text-[#6B7A72] font-medium">mg</span>
                 </div>
               </div>
             </div>
@@ -221,7 +221,7 @@ export default function Onboarding() {
             <div className="space-y-2">
               {FREQUENCIES.map(f => (
                 <button key={f} onClick={() => setFrequency(f)}
-                  className={`w-full px-4 py-3.5 rounded-xl border-2 text-sm text-left cursor-pointer transition-all ${frequency === f ? 'border-[#2D5A3D] bg-[#E8F0EB] text-[#2D5A3D] font-semibold' : 'border-[#EDEDEA] bg-white text-[#1E1E1C] hover:border-[#B0B0A8]'}`}>
+                  className={`w-full px-4 py-3.5 rounded-3xl border-2 text-sm text-left cursor-pointer transition-all ${frequency === f ? 'border-[#1F4B32] bg-[#EAF2EB] text-[#1F4B32] font-semibold shadow-[0_4px_24px_-8px_rgba(31,75,50,0.08)]' : 'border-[#EAF2EB] bg-white text-[#0D1F16] hover:border-[#6B7A72]/30'}`}>
                   {f}
                 </button>
               ))}
@@ -232,34 +232,34 @@ export default function Onboarding() {
           {step === 5 && (
             <div className="space-y-5">
               <div>
-                <label className="text-xs text-[#8B8B83] font-medium mb-2 block">Current weight</label>
+                <label className="text-xs text-[#6B7A72] font-medium mb-2 block">Current weight</label>
                 <div className="flex items-center gap-3">
                   <button onClick={() => setCurrentWeight(String(Math.max(80, (parseInt(currentWeight) || 200) - 1)))}
-                    className="w-11 h-11 rounded-full bg-[#F5F5F2] text-[#6B6B65] flex items-center justify-center text-xl font-bold cursor-pointer hover:bg-[#EDEDEA] active:scale-95 transition-all">−</button>
+                    className="w-12 h-12 rounded-2xl bg-[#F5F8F3] text-[#0D1F16] flex items-center justify-center text-xl font-bold cursor-pointer hover:bg-[#EAF2EB] active:scale-95 transition-all">−</button>
                   <input ref={weightRef} type="number" autoComplete="off" value={currentWeight} onChange={e => setCurrentWeight(e.target.value)}
                     placeholder="175"
-                    className="flex-1 text-center px-4 py-3.5 rounded-xl border-2 border-[#EDEDEA] text-2xl font-bold text-[#1E1E1C] outline-none focus:border-[#2D5A3D] placeholder:text-[#C5C5BE] placeholder:font-normal placeholder:text-base" />
+                    className="flex-1 text-center px-4 py-3.5 rounded-2xl border-2 border-[#EAF2EB] text-2xl font-bold text-[#0D1F16] outline-none focus:border-[#1F4B32] placeholder:text-[#6B7A72]/40 placeholder:font-normal placeholder:text-base" />
                   <button onClick={() => setCurrentWeight(String((parseInt(currentWeight) || 200) + 1))}
-                    className="w-11 h-11 rounded-full bg-[#F5F5F2] text-[#6B6B65] flex items-center justify-center text-xl font-bold cursor-pointer hover:bg-[#EDEDEA] active:scale-95 transition-all">+</button>
-                  <span className="text-sm text-[#B0B0A8] font-medium">lbs</span>
+                    className="w-12 h-12 rounded-2xl bg-[#F5F8F3] text-[#0D1F16] flex items-center justify-center text-xl font-bold cursor-pointer hover:bg-[#EAF2EB] active:scale-95 transition-all">+</button>
+                  <span className="text-sm text-[#6B7A72] font-medium">lbs</span>
                 </div>
               </div>
               <div>
-                <label className="text-xs text-[#8B8B83] font-medium mb-2 block">Goal weight</label>
+                <label className="text-xs text-[#6B7A72] font-medium mb-2 block">Goal weight</label>
                 <div className="flex items-center gap-3">
                   <button onClick={() => setGoalWeight(String(Math.max(80, (parseInt(goalWeight) || 160) - 1)))}
-                    className="w-11 h-11 rounded-full bg-[#F5F5F2] text-[#6B6B65] flex items-center justify-center text-xl font-bold cursor-pointer hover:bg-[#EDEDEA] active:scale-95 transition-all">−</button>
+                    className="w-12 h-12 rounded-2xl bg-[#F5F8F3] text-[#0D1F16] flex items-center justify-center text-xl font-bold cursor-pointer hover:bg-[#EAF2EB] active:scale-95 transition-all">−</button>
                   <input ref={goalRef} type="number" autoComplete="off" value={goalWeight} onChange={e => setGoalWeight(e.target.value)}
                     placeholder="155"
-                    className="flex-1 text-center px-4 py-3.5 rounded-xl border-2 border-[#EDEDEA] text-2xl font-bold text-[#1E1E1C] outline-none focus:border-[#2D5A3D] placeholder:text-[#C5C5BE] placeholder:font-normal placeholder:text-base" />
+                    className="flex-1 text-center px-4 py-3.5 rounded-2xl border-2 border-[#EAF2EB] text-2xl font-bold text-[#0D1F16] outline-none focus:border-[#1F4B32] placeholder:text-[#6B7A72]/40 placeholder:font-normal placeholder:text-base" />
                   <button onClick={() => setGoalWeight(String((parseInt(goalWeight) || 160) + 1))}
-                    className="w-11 h-11 rounded-full bg-[#F5F5F2] text-[#6B6B65] flex items-center justify-center text-xl font-bold cursor-pointer hover:bg-[#EDEDEA] active:scale-95 transition-all">+</button>
-                  <span className="text-sm text-[#B0B0A8] font-medium">lbs</span>
+                    className="w-12 h-12 rounded-2xl bg-[#F5F8F3] text-[#0D1F16] flex items-center justify-center text-xl font-bold cursor-pointer hover:bg-[#EAF2EB] active:scale-95 transition-all">+</button>
+                  <span className="text-sm text-[#6B7A72] font-medium">lbs</span>
                 </div>
               </div>
               {currentWeight && goalWeight && parseInt(currentWeight) > parseInt(goalWeight) && (
-                <div className="bg-[#E8F0EB] rounded-xl px-4 py-3 text-center">
-                  <span className="text-sm text-[#2D5A3D] font-medium">{parseInt(currentWeight) - parseInt(goalWeight)} lbs to go</span>
+                <div className="bg-[#EAF2EB] rounded-3xl px-4 py-3 text-center">
+                  <span className="text-sm text-[#1F4B32] font-medium">{parseInt(currentWeight) - parseInt(goalWeight)} lbs to go</span>
                 </div>
               )}
             </div>
@@ -270,21 +270,21 @@ export default function Onboarding() {
             <div className="space-y-3">
               <div className="flex gap-2 mb-2">
                 <button onClick={() => { setJustStarting(false) }}
-                  className={`flex-1 py-3 rounded-xl border-2 text-sm font-semibold cursor-pointer transition-all ${!justStarting ? 'border-[#2D5A3D] bg-[#E8F0EB] text-[#2D5A3D]' : 'border-[#EDEDEA] text-[#8B8B83]'}`}>
+                  className={`flex-1 py-3 rounded-3xl border-2 text-sm font-semibold cursor-pointer transition-all ${!justStarting ? 'border-[#1F4B32] bg-[#EAF2EB] text-[#1F4B32] shadow-[0_4px_24px_-8px_rgba(31,75,50,0.08)]' : 'border-[#EAF2EB] text-[#6B7A72]'}`}>
                   I have a date
                 </button>
                 <button onClick={() => { setJustStarting(true); setStartDate('') }}
-                  className={`flex-1 py-3 rounded-xl border-2 text-sm font-semibold cursor-pointer transition-all ${justStarting ? 'border-[#2D5A3D] bg-[#E8F0EB] text-[#2D5A3D]' : 'border-[#EDEDEA] text-[#8B8B83]'}`}>
+                  className={`flex-1 py-3 rounded-3xl border-2 text-sm font-semibold cursor-pointer transition-all ${justStarting ? 'border-[#1F4B32] bg-[#EAF2EB] text-[#1F4B32] shadow-[0_4px_24px_-8px_rgba(31,75,50,0.08)]' : 'border-[#EAF2EB] text-[#6B7A72]'}`}>
                   Just starting
                 </button>
               </div>
               {!justStarting && (
                 <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)}
-                  className="w-full px-4 py-3.5 rounded-xl border-2 border-[#EDEDEA] text-sm text-[#1E1E1C] outline-none focus:border-[#2D5A3D]" />
+                  className="w-full px-4 py-3.5 rounded-2xl border-2 border-[#EAF2EB] text-sm text-[#0D1F16] outline-none focus:border-[#1F4B32]" />
               )}
               {justStarting && (
-                <div className="bg-[#E8F0EB] rounded-xl px-4 py-3">
-                  <p className="text-sm text-[#2D5A3D] font-medium">Welcome to the start of your journey 🌿</p>
+                <div className="bg-[#EAF2EB] rounded-3xl px-4 py-3">
+                  <p className="text-sm text-[#1F4B32] font-medium">Welcome to the start of your journey 🌿</p>
                 </div>
               )}
             </div>
@@ -294,22 +294,22 @@ export default function Onboarding() {
           {step === 7 && (
             <div className="space-y-5">
               <div>
-                <label className="text-xs text-[#8B8B83] font-medium mb-2 block">Daily calories (roughly)</label>
+                <label className="text-xs text-[#6B7A72] font-medium mb-2 block">Daily calories (roughly)</label>
                 <div className="flex flex-wrap gap-2">
                   {CALORIE_RANGES.map(c => (
                     <button key={c} onClick={() => setAvgCalories(c)}
-                      className={`px-3.5 py-2.5 rounded-xl border-2 text-xs cursor-pointer transition-all ${avgCalories === c ? 'border-[#2D5A3D] bg-[#E8F0EB] text-[#2D5A3D] font-semibold' : 'border-[#EDEDEA] bg-white text-[#1E1E1C] hover:border-[#B0B0A8]'}`}>
+                      className={`px-3.5 py-2.5 rounded-3xl border-2 text-xs cursor-pointer transition-all ${avgCalories === c ? 'border-[#1F4B32] bg-[#EAF2EB] text-[#1F4B32] font-semibold shadow-[0_4px_24px_-8px_rgba(31,75,50,0.08)]' : 'border-[#EAF2EB] bg-white text-[#0D1F16] hover:border-[#6B7A72]/30'}`}>
                       {c}
                     </button>
                   ))}
                 </div>
               </div>
               <div>
-                <label className="text-xs text-[#8B8B83] font-medium mb-2 block">Daily protein</label>
+                <label className="text-xs text-[#6B7A72] font-medium mb-2 block">Daily protein</label>
                 <div className="flex flex-wrap gap-2">
                   {PROTEIN_RANGES.map(p => (
                     <button key={p} onClick={() => setAvgProtein(p)}
-                      className={`px-3.5 py-2.5 rounded-xl border-2 text-xs cursor-pointer transition-all ${avgProtein === p ? 'border-[#2D5A3D] bg-[#E8F0EB] text-[#2D5A3D] font-semibold' : 'border-[#EDEDEA] bg-white text-[#1E1E1C] hover:border-[#B0B0A8]'}`}>
+                      className={`px-3.5 py-2.5 rounded-3xl border-2 text-xs cursor-pointer transition-all ${avgProtein === p ? 'border-[#1F4B32] bg-[#EAF2EB] text-[#1F4B32] font-semibold shadow-[0_4px_24px_-8px_rgba(31,75,50,0.08)]' : 'border-[#EAF2EB] bg-white text-[#0D1F16] hover:border-[#6B7A72]/30'}`}>
                       {p}
                     </button>
                   ))}
@@ -321,10 +321,10 @@ export default function Onboarding() {
           {/* STEP 8: Water */}
           {step === 8 && (
             <div className="space-y-2">
-              <p className="text-xs text-[#8B8B83] mb-2">Average daily intake</p>
+              <p className="text-xs text-[#6B7A72] mb-2">Average daily intake</p>
               {WATER_RANGES.map(w => (
                 <button key={w} onClick={() => setAvgWater(w)}
-                  className={`w-full px-4 py-3.5 rounded-xl border-2 text-sm text-left cursor-pointer transition-all ${avgWater === w ? 'border-[#2D5A3D] bg-[#E8F0EB] text-[#2D5A3D] font-semibold' : 'border-[#EDEDEA] bg-white text-[#1E1E1C] hover:border-[#B0B0A8]'}`}>
+                  className={`w-full px-4 py-3.5 rounded-3xl border-2 text-sm text-left cursor-pointer transition-all ${avgWater === w ? 'border-[#1F4B32] bg-[#EAF2EB] text-[#1F4B32] font-semibold shadow-[0_4px_24px_-8px_rgba(31,75,50,0.08)]' : 'border-[#EAF2EB] bg-white text-[#0D1F16] hover:border-[#6B7A72]/30'}`}>
                   💧 {w}
                 </button>
               ))}
@@ -334,11 +334,11 @@ export default function Onboarding() {
           {/* STEP 9: Symptoms */}
           {step === 9 && (
             <div>
-              <p className="text-xs text-[#8B8B83] mb-3">Select all that apply</p>
+              <p className="text-xs text-[#6B7A72] mb-3">Select all that apply</p>
               <div className="flex flex-wrap gap-2">
                 {SYMPTOMS.map(s => (
                   <button key={s} onClick={() => toggleSymptom(s)}
-                    className={`px-3.5 py-2.5 rounded-xl border-2 text-xs cursor-pointer transition-all ${symptoms.includes(s) ? s === 'None so far' ? 'border-[#2D5A3D] bg-[#E8F0EB] text-[#2D5A3D] font-semibold' : 'border-[#C4742B] bg-[#FFF0E5] text-[#C4742B] font-semibold' : 'border-[#EDEDEA] bg-white text-[#1E1E1C] hover:border-[#B0B0A8]'}`}>
+                    className={`px-3.5 py-2.5 rounded-2xl border-2 text-xs cursor-pointer transition-all ${symptoms.includes(s) ? s === 'None so far' ? 'border-[#1F4B32] bg-[#EAF2EB] text-[#1F4B32] font-semibold' : 'border-[#C4742B] bg-[#FFF4E8] text-[#C4742B] font-semibold' : 'border-[#EAF2EB] bg-white text-[#0D1F16] hover:border-[#6B7A72]/30'}`}>
                     {s}
                   </button>
                 ))}
@@ -351,17 +351,17 @@ export default function Onboarding() {
         <div className="shrink-0 pt-4 space-y-2">
           {step < TOTAL_STEPS ? (
             <button onClick={next} disabled={!canAdvance()}
-              className="w-full bg-[#2D5A3D] text-white py-3.5 rounded-xl text-sm font-semibold cursor-pointer disabled:opacity-30 transition-all active:scale-[0.98] hover:bg-[#3A7A52]">
+              className="w-full bg-gradient-to-r from-[#1F4B32] to-[#2D6B45] text-white py-3.5 rounded-2xl text-sm font-semibold cursor-pointer disabled:opacity-30 transition-all active:scale-[0.98] hover:shadow-[0_4px_16px_-4px_rgba(31,75,50,0.4)]">
               Continue
             </button>
           ) : (
             <button onClick={finish} disabled={!canAdvance() || saving}
-              className="w-full bg-[#2D5A3D] text-white py-3.5 rounded-xl text-sm font-semibold cursor-pointer disabled:opacity-30 transition-all active:scale-[0.98] hover:bg-[#3A7A52]">
+              className="w-full bg-gradient-to-r from-[#1F4B32] to-[#2D6B45] text-white py-3.5 rounded-2xl text-sm font-semibold cursor-pointer disabled:opacity-30 transition-all active:scale-[0.98] hover:shadow-[0_4px_16px_-4px_rgba(31,75,50,0.4)]">
               {saving ? 'Setting up...' : 'Go to Dashboard →'}
             </button>
           )}
           {step > 1 && (
-            <button onClick={back} className="w-full py-2.5 text-sm text-[#8B8B83] cursor-pointer hover:text-[#1E1E1C] transition-colors">
+            <button onClick={back} className="w-full py-2.5 text-sm text-[#6B7A72] cursor-pointer hover:text-[#0D1F16] transition-colors">
               Back
             </button>
           )}

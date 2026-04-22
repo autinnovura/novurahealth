@@ -3,6 +3,7 @@ import { Geist, Geist_Mono, Inter, Fraunces } from "next/font/google";
 import "./globals.css";
 import StructuredData from "./components/StructuredData";
 import PWARegister from "./components/PWARegister";
+import { Toaster } from "sonner";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -88,6 +89,7 @@ export default function RootLayout({
       <body className="min-h-full flex flex-col">
         <StructuredData />
         <PWARegister />
+        <Toaster position="top-center" richColors />
         {children}
       </body>
     </html>
