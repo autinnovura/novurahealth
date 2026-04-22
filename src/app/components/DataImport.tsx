@@ -2,72 +2,79 @@
 
 import { useState, useRef } from 'react'
 
-interface ImportResult {
+const ACCEPTED_TYPES = 'image/*,application/pdf,.csv,.tsv,.txt,.md,.json,.xlsx,.xls,.xlsm,.docx'
+const MAX_FILES = 10
+
+interface ImportResponse {
   success: boolean
   message: string
-  data?: any
   counts?: Record<string, number>
+  saved?: Record<string, number>
+  saveErrors?: string[]
+  truncated?: boolean
+  skipped?: string[]
+  debug?: string
 }
 
-export default function DataImport({ userId, onImportComplete }: { userId: string; onImportComplete?: () => void }) {
-  const [step, setStep] = useState<'idle' | 'parsing' | 'preview' | 'saving' | 'done'>('idle')
-  const [result, setResult] = useState<ImportResult | null>(null)
-  const [error, setError] = useState('')
-  const [savedMessage, setSavedMessage] = useState('')
+export default function DataImport({ userId }: { userId: string }) {
+  const [files, setFiles] = useState<File[]>([])
+  const [status, setStatus] = useState<'idle' | 'uploading' | 'done' | 'error'>('idle')
+  const [result, setResult] = useState<ImportResponse | null>(null)
+  const [showDebug, setShowDebug] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
+  const cameraRef = useRef<HTMLInputElement>(null)
 
-  async function handleFile(file: File) {
-    setStep('parsing')
-    setError('')
+  function addFiles(incoming: FileList | null) {
+    if (!incoming) return
+    const next = [...files]
+    for (let i = 0; i < incoming.length; i++) {
+      if (next.length >= MAX_FILES) break
+      next.push(incoming[i])
+    }
+    setFiles(next)
+    if (fileRef.current) fileRef.current.value = ''
+    if (cameraRef.current) cameraRef.current.value = ''
+  }
+
+  function removeFile(index: number) {
+    setFiles(prev => prev.filter((_, i) => i !== index))
+  }
+
+  async function handleUpload() {
+    if (files.length === 0) return
+    setStatus('uploading')
     setResult(null)
 
     const formData = new FormData()
-    formData.append('image', file)
     formData.append('userId', userId)
+    for (const f of files) {
+      formData.append('files', f)
+    }
 
     try {
-      const res = await fetch('/api/import-parse', { method: 'POST', body: formData })
-      const data = await res.json()
+      const res = await fetch('/api/import-data', { method: 'POST', body: formData })
+      const data: ImportResponse = await res.json()
+      setResult(data)
 
       if (data.success) {
-        setResult(data)
-        setStep('preview')
+        setStatus('done')
+        setTimeout(() => window.location.reload(), 2500)
       } else {
-        setError(data.message || "Couldn't read that image. Try a clearer screenshot.")
-        setStep('idle')
+        setStatus('error')
       }
     } catch {
-      setError('Something went wrong. Try again.')
-      setStep('idle')
-    }
-  }
-
-  async function confirmImport() {
-    if (!result?.data) return
-    setStep('saving')
-
-    try {
-      const res = await fetch('/api/import-save', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, data: result.data }),
-      })
-      const data = await res.json()
-      setSavedMessage(data.message || 'Data imported.')
-      setStep('done')
-      onImportComplete?.()
-    } catch {
-      setError('Failed to save data. Try again.')
-      setStep('preview')
+      setResult({ success: false, message: 'Network error. Please try again.' })
+      setStatus('error')
     }
   }
 
   function reset() {
-    setStep('idle')
+    setFiles([])
+    setStatus('idle')
     setResult(null)
-    setError('')
-    setSavedMessage('')
+    setShowDebug(false)
     if (fileRef.current) fileRef.current.value = ''
+    if (cameraRef.current) cameraRef.current.value = ''
   }
 
   return (
@@ -75,109 +82,160 @@ export default function DataImport({ userId, onImportComplete }: { userId: strin
       <div className="flex items-center gap-2 mb-3">
         <div className="w-8 h-8 rounded-full bg-[#E8F0EB] flex items-center justify-center">
           <svg className="w-4 h-4 text-[#2D5A3D]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            <path strokeLinecap="round" strokeLinejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
           </svg>
         </div>
         <div>
-          <h3 className="text-sm font-semibold text-[#1E1E1C]">Import from Screenshot</h3>
-          <p className="text-[10px] text-[#B0B0A8]">Upload a photo of your old tracker, spreadsheet, or app</p>
+          <h3 className="text-sm font-semibold text-[#1E1E1C]">Import Data</h3>
+          <p className="text-[10px] text-[#B0B0A8]">Screenshots, PDFs, spreadsheets, CSV, Word docs</p>
         </div>
       </div>
 
-      {step === 'idle' && (
-        <>
-          <input ref={fileRef} type="file" accept="image/*" className="hidden"
-            onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f) }} />
+      {/* File inputs (hidden) */}
+      <input
+        ref={fileRef}
+        type="file"
+        accept={ACCEPTED_TYPES}
+        multiple
+        className="hidden"
+        onChange={e => addFiles(e.target.files)}
+      />
+      <input
+        ref={cameraRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        className="hidden"
+        onChange={e => addFiles(e.target.files)}
+      />
+
+      {/* Idle + file selection */}
+      {(status === 'idle' || status === 'error') && (
+        <div className="space-y-3">
+          {/* Buttons */}
           <div className="flex gap-2">
-            <button onClick={() => fileRef.current?.click()}
-              className="flex-1 bg-[#2D5A3D] text-white py-3 rounded-xl text-sm font-semibold cursor-pointer hover:bg-[#3A7A52] transition-colors">
-              Upload Screenshot
+            <button
+              onClick={() => fileRef.current?.click()}
+              className="flex-1 bg-[#2D5A3D] text-white py-3 rounded-xl text-sm font-semibold cursor-pointer hover:bg-[#3A7A52] transition-colors"
+            >
+              Choose Files
             </button>
-            <button onClick={() => { if (fileRef.current) { fileRef.current.setAttribute('capture', 'environment'); fileRef.current.click(); fileRef.current.removeAttribute('capture') }}}
-              className="px-4 bg-[#F5F5F2] text-[#6B6B65] py-3 rounded-xl text-sm font-semibold cursor-pointer hover:bg-[#EDEDEA] transition-colors">
+            <button
+              onClick={() => cameraRef.current?.click()}
+              className="px-4 bg-[#F5F5F2] text-[#6B6B65] py-3 rounded-xl text-sm font-semibold cursor-pointer hover:bg-[#EDEDEA] transition-colors"
+            >
               Camera
             </button>
           </div>
-          {error && <p className="text-xs text-red-500 mt-2">{error}</p>}
-        </>
-      )}
 
-      {step === 'parsing' && (
-        <div className="flex items-center gap-3 py-4">
-          <div className="w-5 h-5 border-2 border-[#2D5A3D] border-t-transparent rounded-full animate-spin" />
-          <p className="text-sm text-[#6B6B65]">Reading your data...</p>
-        </div>
-      )}
-
-      {step === 'preview' && result && (
-        <div className="space-y-3">
-          <p className="text-sm text-[#1E1E1C] font-medium">{result.message}</p>
-
-          <div className="grid grid-cols-3 gap-2">
-            {result.counts && Object.entries(result.counts).map(([key, count]) => (
-              count > 0 && (
-                <div key={key} className="bg-[#E8F0EB] rounded-lg p-2 text-center">
-                  <p className="text-lg font-bold text-[#2D5A3D]">{count}</p>
-                  <p className="text-[9px] text-[#2D5A3D]/70 uppercase font-semibold">{key}</p>
+          {/* Selected file list */}
+          {files.length > 0 && (
+            <div className="space-y-1.5">
+              {files.map((f, i) => (
+                <div key={`${f.name}-${i}`} className="flex items-center justify-between bg-[#F5F5F2] rounded-lg px-3 py-2">
+                  <span className="text-xs text-[#1E1E1C] truncate flex-1 mr-2">{f.name}</span>
+                  <button
+                    onClick={() => removeFile(i)}
+                    className="text-[#B0B0A8] hover:text-red-500 transition-colors shrink-0 cursor-pointer"
+                  >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
                 </div>
-              )
-            ))}
-          </div>
+              ))}
+              <p className="text-[10px] text-[#B0B0A8]">{files.length}/{MAX_FILES} files selected</p>
 
-          {/* Preview details */}
-          <div className="max-h-40 overflow-y-auto bg-[#F5F5F2] rounded-lg p-3 space-y-1">
-            {result.data.weight_logs?.map((w: any, i: number) => (
-              <p key={`w${i}`} className="text-xs text-[#6B6B65]">Weight: {w.weight}{w.unit || 'lbs'} on {w.date}</p>
-            ))}
-            {result.data.food_logs?.map((f: any, i: number) => (
-              <p key={`f${i}`} className="text-xs text-[#6B6B65]">Food: {f.food_name} {f.calories ? `(${f.calories} cal` : ''}{f.protein ? `, ${f.protein}g protein` : ''}{f.calories ? ')' : ''} on {f.date}</p>
-            ))}
-            {result.data.medication_logs?.map((m: any, i: number) => (
-              <p key={`m${i}`} className="text-xs text-[#6B6B65]">Med: {m.medication} {m.dose} on {m.date}</p>
-            ))}
-            {result.data.water_logs?.map((w: any, i: number) => (
-              <p key={`wl${i}`} className="text-xs text-[#6B6B65]">Water: {w.amount_oz}oz on {w.date}</p>
-            ))}
-            {result.data.side_effect_logs?.map((s: any, i: number) => (
-              <p key={`s${i}`} className="text-xs text-[#6B6B65]">Side effect: {s.symptom} ({s.severity}/5) on {s.date}</p>
-            ))}
-            {result.data.exercise_logs?.map((e: any, i: number) => (
-              <p key={`e${i}`} className="text-xs text-[#6B6B65]">Exercise: {e.exercise_type} {e.duration_min ? `(${e.duration_min}min)` : ''} on {e.date}</p>
-            ))}
-          </div>
+              <button
+                onClick={handleUpload}
+                className="w-full bg-[#2D5A3D] text-white py-3 rounded-xl text-sm font-semibold cursor-pointer hover:bg-[#3A7A52] transition-colors"
+              >
+                Import {files.length} File{files.length > 1 ? 's' : ''}
+              </button>
+            </div>
+          )}
 
-          <div className="flex gap-2">
-            <button onClick={confirmImport}
-              className="flex-1 bg-[#2D5A3D] text-white py-3 rounded-xl text-sm font-semibold cursor-pointer hover:bg-[#3A7A52] transition-colors">
-              Import All
-            </button>
-            <button onClick={reset}
-              className="px-4 bg-[#F5F5F2] text-[#6B6B65] py-3 rounded-xl text-sm font-semibold cursor-pointer hover:bg-[#EDEDEA] transition-colors">
-              Cancel
-            </button>
-          </div>
+          {/* Error state */}
+          {status === 'error' && result && (
+            <div className="space-y-2">
+              <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+                <p className="text-xs text-red-700">{result.message}</p>
+              </div>
+              {result.debug && (
+                <div>
+                  <button
+                    onClick={() => setShowDebug(!showDebug)}
+                    className="text-[10px] text-[#B0B0A8] underline cursor-pointer"
+                  >
+                    {showDebug ? 'Hide' : 'Show'} debug info
+                  </button>
+                  {showDebug && (
+                    <pre className="mt-1 bg-[#F5F5F2] rounded-lg p-2 text-[10px] text-[#6B6B65] overflow-x-auto max-h-32 whitespace-pre-wrap">
+                      {result.debug}
+                    </pre>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 
-      {step === 'saving' && (
+      {/* Uploading */}
+      {status === 'uploading' && (
         <div className="flex items-center gap-3 py-4">
           <div className="w-5 h-5 border-2 border-[#2D5A3D] border-t-transparent rounded-full animate-spin" />
-          <p className="text-sm text-[#6B6B65]">Saving to your account...</p>
+          <p className="text-sm text-[#6B6B65]">Reading and importing your data...</p>
         </div>
       )}
 
-      {step === 'done' && (
+      {/* Done */}
+      {status === 'done' && result && (
         <div className="space-y-3">
           <div className="bg-[#E8F0EB] rounded-lg p-3 flex items-center gap-2">
             <svg className="w-5 h-5 text-[#2D5A3D] shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
             </svg>
-            <p className="text-sm text-[#2D5A3D] font-medium">{savedMessage}</p>
+            <p className="text-sm text-[#2D5A3D] font-medium">{result.message}</p>
           </div>
-          <button onClick={reset}
-            className="w-full bg-[#F5F5F2] text-[#6B6B65] py-3 rounded-xl text-sm font-semibold cursor-pointer hover:bg-[#EDEDEA] transition-colors">
-            Import More
-          </button>
+
+          {/* Per-category counts */}
+          {result.saved && Object.keys(result.saved).length > 0 && (
+            <div className="grid grid-cols-3 gap-2">
+              {Object.entries(result.saved).map(([key, count]) => (
+                <div key={key} className="bg-[#E8F0EB] rounded-lg p-2 text-center">
+                  <p className="text-lg font-bold text-[#2D5A3D]">{count}</p>
+                  <p className="text-[9px] text-[#2D5A3D]/70 uppercase font-semibold">{key}</p>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Truncation warning */}
+          {result.truncated && (
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+              <p className="text-xs text-amber-700">
+                AI response was truncated — some data may be missing. Try uploading fewer files or splitting large spreadsheets.
+              </p>
+            </div>
+          )}
+
+          {/* Skipped files */}
+          {result.skipped && result.skipped.length > 0 && (
+            <p className="text-xs text-[#B0B0A8]">Skipped: {result.skipped.join(', ')}</p>
+          )}
+
+          {/* Save errors */}
+          {result.saveErrors && result.saveErrors.length > 0 && (
+            <div className="bg-red-50 border border-red-200 rounded-lg p-2">
+              <p className="text-[10px] text-red-600 font-medium">Some data failed to save:</p>
+              {result.saveErrors.map((err, i) => (
+                <p key={i} className="text-[10px] text-red-500">{err}</p>
+              ))}
+            </div>
+          )}
+
+          <p className="text-[10px] text-[#B0B0A8] text-center">Refreshing page...</p>
         </div>
       )}
     </div>

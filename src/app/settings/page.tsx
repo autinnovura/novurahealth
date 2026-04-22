@@ -394,7 +394,7 @@ export default function Settings() {
         {/* ══════════ DATA ══════════ */}
         {activeSection === 'preferences' && (<>
           {/* Import */}
-          {userId && <DataImport userId={userId} onImportComplete={() => window.location.reload()} />}
+          {userId && <DataImport userId={userId} />}
 
           {/* Export */}
           <div className="bg-white border border-[#EDEDEA] rounded-xl p-5 space-y-4">
