@@ -201,22 +201,30 @@ function Chat() {
             ))}
           </div>
         )}
-        <div className="flex gap-2">
+        <form autoComplete="off" onSubmit={e => { e.preventDefault(); sendMessage() }} className="flex gap-2">
           <input
             ref={inputRef}
             type="text"
+            name="nova-message"
+            autoComplete="off"
+            autoCorrect="on"
+            autoCapitalize="sentences"
+            spellCheck={true}
+            data-form-type="other"
+            data-1p-ignore="true"
+            data-lpignore="true"
             value={input}
             onChange={e => setInput(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && !e.shiftKey && sendMessage()}
+            onKeyDown={e => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), sendMessage())}
             placeholder="Ask Nova anything..."
             className="flex-1 px-4 py-3 rounded-xl border border-[#EDEDEA] bg-[#FAFAF7] text-sm text-[#1E1E1C] outline-none focus:border-[#2D5A3D] placeholder:text-[#C5C5BE]"
           />
           <VoiceInput onResult={(text) => setInput(text)} />
-          <button onClick={() => sendMessage()} disabled={loading || !input.trim()}
+          <button type="submit" disabled={loading || !input.trim()}
             className="bg-[#2D5A3D] text-white px-5 py-3 rounded-xl text-sm font-semibold cursor-pointer disabled:opacity-30 transition-opacity active:scale-95">
             Send
           </button>
-        </div>
+        </form>
       </div>
 
       {/* Bottom nav */}
