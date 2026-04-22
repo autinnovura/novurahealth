@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState, useEffect, useRef, useCallback, Suspense } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '../lib/supabase'
 import VoiceInput from '../components/VoiceInput'
 
@@ -16,8 +16,17 @@ const QUICK_PROMPTS = [
   "Give me a meal plan for today",
 ]
 
-export default function Chat() {
+export default function ChatPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-[#FAFAF7] flex items-center justify-center"><div className="w-7 h-7 border-2 border-[#2D5A3D] border-t-transparent rounded-full animate-spin"/></div>}>
+      <Chat />
+    </Suspense>
+  )
+}
+
+function Chat() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [userId, setUserId] = useState<string | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
@@ -25,6 +34,7 @@ export default function Chat() {
   const [initialLoading, setInitialLoading] = useState(true)
   const scrollRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  const autoSentRef = useRef(false)
 
   useEffect(() => {
     async function init() {
@@ -51,21 +61,21 @@ export default function Chat() {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
   }, [messages, loading])
 
-  async function sendMessage(text?: string) {
+  const sendMessage = useCallback(async (text?: string) => {
     const msg = (text || input).trim()
     if (!msg || !userId) return
     setInput('')
 
     const userMsg: Message = { role: 'user', content: msg }
-    const updated = [...messages, userMsg]
-    setMessages(updated)
-    setLoading(true)
+    setMessages(prev => {
+      const updated = [...prev, userMsg]
 
-    // Save user message
-    supabase.from('messages').insert({ user_id: userId, role: 'user', content: msg }).then()
+      // Save user message
+      supabase.from('messages').insert({ user_id: userId, role: 'user', content: msg }).then()
 
-    try {
-      const res = await fetch('/api/chat', {
+      // Fire off the API call
+      setLoading(true)
+      fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -73,18 +83,33 @@ export default function Chat() {
           messages: updated.map(m => ({ role: m.role, content: m.content })),
         }),
       })
-      const { message } = await res.json()
-      const novaMsg: Message = { role: 'assistant', content: message }
-      setMessages([...updated, novaMsg])
+        .then(res => res.json())
+        .then(({ message }) => {
+          const novaMsg: Message = { role: 'assistant', content: message }
+          setMessages(prev2 => [...prev2, novaMsg])
+          supabase.from('messages').insert({ user_id: userId, role: 'assistant', content: message }).then()
+        })
+        .catch(() => {
+          setMessages(prev2 => [...prev2, { role: 'assistant', content: "Having trouble connecting. Try again in a sec." }])
+        })
+        .finally(() => {
+          setLoading(false)
+          inputRef.current?.focus()
+        })
 
-      // Save Nova's response
-      supabase.from('messages').insert({ user_id: userId, role: 'assistant', content: message }).then()
-    } catch {
-      setMessages([...updated, { role: 'assistant', content: "Having trouble connecting. Try again in a sec." }])
+      return updated
+    })
+  }, [userId, input])
+
+  // Auto-send prompt from URL query param (e.g. ?prompt=What+should+I+eat)
+  useEffect(() => {
+    if (autoSentRef.current || initialLoading || !userId) return
+    const prompt = searchParams.get('prompt')
+    if (prompt) {
+      autoSentRef.current = true
+      sendMessage(prompt)
     }
-    setLoading(false)
-    inputRef.current?.focus()
-  }
+  }, [initialLoading, userId, searchParams, sendMessage])
 
   if (initialLoading) {
     return <div className="min-h-screen bg-[#FAFAF7] flex items-center justify-center"><div className="w-7 h-7 border-2 border-[#2D5A3D] border-t-transparent rounded-full animate-spin"/></div>

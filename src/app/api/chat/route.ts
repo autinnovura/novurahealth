@@ -237,12 +237,29 @@ ${context}
    - Keep meal plans SHORT. A daily plan is 3-4 meals in 4-6 sentences total. A weekly plan is one sentence per day. Example: "Monday — Greek yogurt + berries for breakfast, chicken stir-fry for lunch, salmon + rice for dinner, that's about 120g protein."
    - Prioritize protein-dense, GLP-1 friendly foods (easy on the stomach, smaller portions, high protein per calorie)
    - If they ask for a recipe, keep it to 3-4 sentences max. "Chicken stir-fry — dice a chicken breast, cook in olive oil 5 min, toss in broccoli and soy sauce, serve over rice. About 45g protein, 450 cal."
-   - If asked "what should I eat", look at their recent food_logs, avoid repeats, and give ONE specific suggestion with protein count
+   - If asked "what should I eat", follow the MEAL SUGGESTION FORMAT below
    - For tapering discussions, give a direct answer based on their medication data and weight trend. Don't hedge with 10 caveats — give the practical answer, then add one line about talking to their doctor
 
-CRITICAL: Give answers first. Don't interview.
-When asked for a meal suggestion: give the meal with macros.
-When asked what to eat: check their food_logs and suggest something they haven't had recently with exact protein count.
+9. MEAL SUGGESTION FORMAT (when user asks "what should I eat?" or similar):
+   Give exactly 3 concrete, specific meal options. Consider:
+   - Their remaining protein target for the day (subtract today's logged protein from their daily goal)
+   - Time of day: breakfast before 10am, lunch 11am-2pm, dinner 5pm-8pm, snack otherwise
+   - Recent meals from food_logs today — avoid suggesting the same thing they already ate
+   - GLP-1 patients often have reduced appetite — prioritize protein-dense, easy-to-eat options
+   - Base suggestions on foods they actually eat when possible (check their common foods)
+
+   Format: 3 numbered options, each one line, with estimated protein. Example:
+   1. Greek yogurt with berries and granola (20g protein)
+   2. 2 hard-boiled eggs with string cheese (18g protein)
+   3. Rotisserie chicken with avocado toast (32g protein)
+
+   Then ONE short line about which option best fits their remaining protein. Don't over-explain.
+
+CRITICAL: When the user mentions eating food, weight, injections, water, side effects, or exercise — use the logging tools to save their data. Always log first, then respond. Keep responses short and conversational.
+
+Give answers first. Don't interview.
+When asked for a meal suggestion: give 3 options with protein counts using the format above.
+When asked what to eat: same — 3 numbered options, not just one.
 When asked for a recipe: give the full recipe immediately.
 Max 1 question per response. Never more.
 
@@ -257,45 +274,256 @@ Max 1 question per response. Never more.
    - Don't write paragraphs. If your message looks like an essay, you're doing it wrong.
    - Don't give disclaimers, caveats, or "consult your doctor" on every single message — save that for actual medical decisions`
 
-  try {
-    console.log('CHAT ENV CHECK:', {
-      hasAnthropicKey: !!process.env.ANTHROPIC_API_KEY,
-      keyPrefix: process.env.ANTHROPIC_API_KEY?.slice(0, 10),
-      hasSupabaseUrl: !!process.env.NEXT_PUBLIC_SUPABASE_URL,
-      hasServiceRole: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
-    })
+  const tools = [
+    {
+      name: 'log_food',
+      description: 'Log a meal or food item when the user describes what they ate. Use this whenever the user mentions food they consumed.',
+      input_schema: {
+        type: 'object' as const,
+        properties: {
+          meal_type: { type: 'string', enum: ['breakfast', 'lunch', 'dinner', 'snack', 'other'] },
+          food_name: { type: 'string', description: 'Description of what they ate' },
+          calories: { type: 'number', description: 'Estimated calories if known' },
+          protein: { type: 'number', description: 'Estimated protein grams if known' },
+          carbs: { type: 'number' },
+          fat: { type: 'number' },
+        },
+        required: ['meal_type', 'food_name'],
+      },
+    },
+    {
+      name: 'log_weight',
+      description: "Log the user's weight when they share it.",
+      input_schema: {
+        type: 'object' as const,
+        properties: {
+          weight: { type: 'number', description: 'Weight in pounds' },
+        },
+        required: ['weight'],
+      },
+    },
+    {
+      name: 'log_medication',
+      description: 'Log a GLP-1 injection when the user mentions taking their dose.',
+      input_schema: {
+        type: 'object' as const,
+        properties: {
+          medication: { type: 'string', description: 'Medication name e.g. Semaglutide, Tirzepatide' },
+          dose: { type: 'string', description: 'Dose e.g. 5mg, 10mg' },
+          injection_site: { type: 'string', description: 'e.g. L abdomen, R thigh' },
+        },
+        required: ['medication', 'dose'],
+      },
+    },
+    {
+      name: 'log_water',
+      description: 'Log water intake when user mentions drinking water.',
+      input_schema: {
+        type: 'object' as const,
+        properties: {
+          amount_oz: { type: 'number' },
+        },
+        required: ['amount_oz'],
+      },
+    },
+    {
+      name: 'log_side_effect',
+      description: 'Log a side effect when user mentions feeling nauseous, tired, etc.',
+      input_schema: {
+        type: 'object' as const,
+        properties: {
+          symptom: { type: 'string' },
+          severity: { type: 'number', description: '1=very mild, 5=severe' },
+        },
+        required: ['symptom', 'severity'],
+      },
+    },
+    {
+      name: 'log_exercise',
+      description: 'Log a workout when user mentions exercising.',
+      input_schema: {
+        type: 'object' as const,
+        properties: {
+          exercise_type: { type: 'string' },
+          duration_minutes: { type: 'number' },
+          notes: { type: 'string' },
+        },
+        required: ['exercise_type', 'duration_minutes'],
+      },
+    },
+  ]
 
+  try {
+    const apiHeaders = {
+      'Content-Type': 'application/json',
+      'x-api-key': process.env.ANTHROPIC_API_KEY || '',
+      'anthropic-version': '2023-06-01',
+    }
+
+    // Initial Claude call with tools
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': process.env.ANTHROPIC_API_KEY || '',
-        'anthropic-version': '2023-06-01',
-      },
+      headers: apiHeaders,
       body: JSON.stringify({
         model: 'claude-sonnet-4-20250514',
-        max_tokens: 300,
+        max_tokens: 1024,
         system: systemPrompt,
+        tools,
         messages: messages.slice(-20),
       }),
     })
 
-    console.log('ANTHROPIC RESPONSE STATUS:', res.status)
     if (!res.ok) {
       const errorBody = await res.text()
       console.error('ANTHROPIC ERROR:', errorBody)
       return NextResponse.json({ message: "Nova is temporarily unavailable. Please try again." })
     }
 
-    const result = await res.json()
-    const reply = result.content?.[0]?.text
+    let result = await res.json()
+
+    // Process tool calls in a loop until Claude gives a final text response
+    let conversationMessages = [...messages.slice(-20)]
+
+    while (result.stop_reason === 'tool_use') {
+      const toolUseBlocks = (result.content || []).filter((b: any) => b.type === 'tool_use')
+      const toolResults: any[] = []
+
+      for (const toolCall of toolUseBlocks) {
+        const toolResult = await executeToolCall(toolCall.name, toolCall.input, userId)
+        toolResults.push({
+          type: 'tool_result',
+          tool_use_id: toolCall.id,
+          content: toolResult.success
+            ? JSON.stringify({ status: 'saved', ...toolResult })
+            : JSON.stringify({ status: 'error', error: toolResult.error }),
+        })
+      }
+
+      // Add assistant response + tool results to conversation
+      conversationMessages.push({ role: 'assistant', content: result.content })
+      conversationMessages.push({ role: 'user', content: toolResults })
+
+      // Follow-up call so Claude can acknowledge the logs
+      const followUp = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: apiHeaders,
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: 1024,
+          system: systemPrompt,
+          tools,
+          messages: conversationMessages,
+        }),
+      })
+
+      if (!followUp.ok) {
+        // If follow-up fails, return whatever text we have from the first response
+        const textBlock = (result.content || []).find((b: any) => b.type === 'text')
+        return NextResponse.json({ message: textBlock?.text || 'Logged your data!' })
+      }
+
+      result = await followUp.json()
+    }
+
+    // Extract final text reply
+    const textBlocks = (result.content || []).filter((b: any) => b.type === 'text')
+    const reply = textBlocks.map((b: any) => b.text).join('\n').trim()
+
     if (!reply) {
-      console.error('ANTHROPIC EMPTY REPLY:', JSON.stringify(result))
       return NextResponse.json({ message: "Nova is temporarily unavailable. Please try again." })
     }
     return NextResponse.json({ message: reply })
   } catch (error) {
     console.error('CHAT ROUTE ERROR:', error)
     return NextResponse.json({ message: "Nova is temporarily unavailable. Please try again." })
+  }
+}
+
+// ── TOOL EXECUTION ──
+
+async function executeToolCall(
+  toolName: string,
+  input: any,
+  userId: string
+): Promise<{ success: boolean; error?: string; [key: string]: any }> {
+  const now = new Date().toISOString()
+
+  try {
+    switch (toolName) {
+      case 'log_food': {
+        const { error } = await supabaseAdmin.from('food_logs').insert({
+          user_id: userId,
+          meal_type: input.meal_type,
+          food_name: input.food_name,
+          calories: input.calories || null,
+          protein: input.protein || null,
+          carbs: input.carbs || null,
+          fat: input.fat || null,
+          logged_at: now,
+        })
+        if (error) return { success: false, error: error.message }
+        return { success: true, logged: 'food', food_name: input.food_name }
+      }
+
+      case 'log_weight': {
+        const { error } = await supabaseAdmin.from('weight_logs').insert({
+          user_id: userId,
+          weight: input.weight,
+          logged_at: now,
+        })
+        if (error) return { success: false, error: error.message }
+        return { success: true, logged: 'weight', weight: input.weight }
+      }
+
+      case 'log_medication': {
+        const { error } = await supabaseAdmin.from('medication_logs').insert({
+          user_id: userId,
+          medication: input.medication,
+          dose: input.dose,
+          injection_site: input.injection_site || null,
+          logged_at: now,
+        })
+        if (error) return { success: false, error: error.message }
+        return { success: true, logged: 'medication', medication: input.medication }
+      }
+
+      case 'log_water': {
+        const { error } = await supabaseAdmin.from('water_logs').insert({
+          user_id: userId,
+          amount_oz: input.amount_oz,
+          logged_at: now,
+        })
+        if (error) return { success: false, error: error.message }
+        return { success: true, logged: 'water', amount_oz: input.amount_oz }
+      }
+
+      case 'log_side_effect': {
+        const { error } = await supabaseAdmin.from('side_effect_logs').insert({
+          user_id: userId,
+          symptom: input.symptom,
+          severity: input.severity,
+          logged_at: now,
+        })
+        if (error) return { success: false, error: error.message }
+        return { success: true, logged: 'side_effect', symptom: input.symptom }
+      }
+
+      case 'log_exercise': {
+        const { error } = await supabaseAdmin.from('exercise_logs').insert({
+          user_id: userId,
+          exercise_type: input.exercise_type,
+          duration_minutes: input.duration_minutes,
+          notes: input.notes || null,
+          logged_at: now,
+        })
+        if (error) return { success: false, error: error.message }
+        return { success: true, logged: 'exercise', exercise_type: input.exercise_type }
+      }
+
+      default:
+        return { success: false, error: `Unknown tool: ${toolName}` }
+    }
+  } catch (err: any) {
+    return { success: false, error: err?.message || 'Unknown error' }
   }
 }

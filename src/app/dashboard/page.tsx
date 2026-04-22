@@ -168,6 +168,11 @@ export default function Dashboard() {
   const [exerciseNotes, setExerciseNotes] = useState('')
   const [streak, setStreak] = useState(0)
   const [showFirstRun, setShowFirstRun] = useState(false)
+  const [medMenuId, setMedMenuId] = useState<string | null>(null)
+  const [editingMed, setEditingMed] = useState<MedLog | null>(null)
+  const [editMedDose, setEditMedDose] = useState('')
+  const [editMedSite, setEditMedSite] = useState('')
+  const [editMedDate, setEditMedDate] = useState('')
 
   const calculateStreak = useCallback((foods: FoodLog[]) => {
     const today = new Date(); today.setHours(0,0,0,0)
@@ -320,6 +325,44 @@ export default function Dashboard() {
     setModal(null); setExerciseType(''); setExerciseDuration(''); setExerciseNotes('')
   }
 
+  async function deleteMedLog(id: string) {
+    if (!userId || !confirm('Delete this injection?')) return
+    const res = await fetch(`/api/medication-logs/${id}?userId=${userId}`, { method: 'DELETE' })
+    if (res.ok) {
+      setMedLogs(prev => prev.filter(m => m.id !== id))
+      setMedChartLogs(prev => prev.filter(m => m.id !== id))
+    }
+    setMedMenuId(null)
+  }
+
+  function openEditMed(m: MedLog) {
+    setEditingMed(m)
+    setEditMedDose(m.dose)
+    setEditMedSite(m.injection_site || '')
+    setEditMedDate(new Date(m.logged_at).toISOString().slice(0, 16))
+    setMedMenuId(null)
+  }
+
+  async function saveEditMed() {
+    if (!editingMed || !userId) return
+    const res = await fetch(`/api/medication-logs/${editingMed.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        userId,
+        dose: editMedDose,
+        injection_site: editMedSite,
+        logged_at: new Date(editMedDate).toISOString(),
+      }),
+    })
+    if (res.ok) {
+      const updated = { ...editingMed, dose: editMedDose, injection_site: editMedSite, logged_at: new Date(editMedDate).toISOString() }
+      setMedLogs(prev => prev.map(m => m.id === editingMed.id ? updated : m))
+      setMedChartLogs(prev => prev.map(m => m.id === editingMed.id ? updated : m))
+    }
+    setEditingMed(null)
+  }
+
   if (loading) return <div className="min-h-screen bg-[#FAFAF7] flex items-center justify-center"><div className="w-7 h-7 border-2 border-[#2D5A3D] border-t-transparent rounded-full animate-spin"/></div>
 
   // ── Computed Stats ─────────────────────────────────
@@ -409,7 +452,7 @@ export default function Dashboard() {
   const divisor = nutritionView === 'day' ? 1 : nutritionView === 'week' ? daysThisWeek : new Date(selectedDate.getFullYear(), selectedDate.getMonth() + 1, 0).getDate()
 
   return (
-    <div className="min-h-screen bg-[#FAFAF7] pb-20">
+    <div className="min-h-screen bg-[#FAFAF7] pb-20" onClick={() => medMenuId && setMedMenuId(null)}>
       {showFirstRun && userId && profile && (
         <FirstRunModal
           userId={userId}
@@ -479,6 +522,11 @@ export default function Dashboard() {
               <div className="h-1 bg-[#E0EBF5] rounded-full mt-2"><div className="h-full bg-[#4A90D9] rounded-full" style={{ width: `${Math.min(100,(todayWater/waterTarget)*100)}%` }}/></div>
             </div>
           </div>
+
+          <a href="/chat?prompt=What+should+I+eat+right+now%3F"
+            className="block bg-[#2D5A3D] text-white font-semibold py-4 px-6 rounded-2xl text-center text-sm hover:bg-[#3A7A52] transition-colors">
+            <span className="mr-2">🍽️</span> What should I eat?
+          </a>
 
           {proteinRem !== null && proteinRem > 0 && <div className="bg-[#E8F0EB] rounded-xl px-4 py-3"><p className="text-xs text-[#2D5A3D] font-medium">{getProteinSuggestion(proteinRem)}</p></div>}
 
@@ -646,7 +694,27 @@ export default function Dashboard() {
               <div className="bg-[#E8F0EB] rounded-lg p-3"><p className="text-[9px] text-[#2D5A3D] uppercase font-semibold">Next Dose</p><p className="text-sm font-bold text-[#2D5A3D] mt-0.5">{daysUntilInj!==null?daysUntilInj===0?'Today':`${daysUntilInj}d`:'—'}</p></div>
             </div>
             {medLogs.length > 0 && <div className="space-y-2"><p className="text-[10px] font-semibold text-[#B0B0A8] uppercase tracking-wider">History</p>
-              {medLogs.slice(0,8).map(m => <div key={m.id} className="flex justify-between items-center py-1.5 border-t border-[#F5F5F2]"><div><span className="text-sm text-[#1E1E1C]">{m.injection_site||'—'}</span><span className="text-[10px] text-[#B0B0A8] ml-2">{m.dose}</span></div><span className="text-[10px] text-[#B0B0A8]">{formatDate(m.logged_at)} · {formatTime(m.logged_at)}</span></div>)}
+              {medLogs.slice(0,8).map(m => <div key={m.id} className="flex justify-between items-center py-1.5 border-t border-[#F5F5F2] relative">
+                <div><span className="text-sm text-[#1E1E1C]">{m.injection_site||'—'}</span><span className="text-[10px] text-[#B0B0A8] ml-2">{m.dose}</span></div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] text-[#B0B0A8]">{formatDate(m.logged_at)} · {formatTime(m.logged_at)}</span>
+                  <button onClick={e => { e.stopPropagation(); setMedMenuId(medMenuId === m.id ? null : m.id) }} className="w-6 h-6 flex items-center justify-center rounded-md hover:bg-[#F5F5F2] cursor-pointer text-[#B0B0A8] hover:text-[#6B6B65] transition-colors">
+                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><circle cx="10" cy="4" r="1.5"/><circle cx="10" cy="10" r="1.5"/><circle cx="10" cy="16" r="1.5"/></svg>
+                  </button>
+                  {medMenuId === m.id && (
+                    <div className="absolute right-0 top-8 bg-white border border-[#EDEDEA] rounded-lg shadow-lg z-10 overflow-hidden">
+                      <button onClick={() => openEditMed(m)} className="w-full px-4 py-2.5 text-xs text-[#1E1E1C] hover:bg-[#F5F5F2] text-left cursor-pointer flex items-center gap-2">
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+                        Edit
+                      </button>
+                      <button onClick={() => deleteMedLog(m.id)} className="w-full px-4 py-2.5 text-xs text-red-600 hover:bg-red-50 text-left cursor-pointer flex items-center gap-2">
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                        Delete
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>)}
             </div>}
           </div>
 
@@ -763,6 +831,29 @@ export default function Dashboard() {
             <div><label className="text-[9px] font-semibold text-[#B0B0A8] uppercase tracking-wider">Minutes</label><input type="number" autoComplete="off" value={exerciseDuration} onChange={e => setExerciseDuration(e.target.value)} placeholder="30" className="w-full px-3 py-2.5 rounded-lg border border-[#EDEDEA] text-sm text-[#1E1E1C] outline-none focus:border-[#4A90D9]"/></div>
             <input type="text" autoComplete="off" value={exerciseNotes} onChange={e => setExerciseNotes(e.target.value)} placeholder="Notes (optional)" className="w-full px-3 py-2.5 rounded-lg border border-[#EDEDEA] text-sm text-[#1E1E1C] outline-none placeholder:text-[#C5C5BE]"/>
             <button onClick={logExercise} disabled={!exerciseType||!exerciseDuration} className="w-full bg-[#4A90D9] text-white py-3 rounded-lg text-sm font-semibold cursor-pointer disabled:opacity-30">Save</button>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Injection Modal */}
+      {editingMed && (
+        <div className="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center z-50 px-4 pb-4" onClick={e => { if (e.target === e.currentTarget) setEditingMed(null) }}>
+          <div className="bg-white rounded-2xl w-full max-w-md p-5 space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center"><h2 className="text-base font-bold text-[#1E1E1C]">Edit Injection</h2><button onClick={() => setEditingMed(null)} className="text-[#B0B0A8] hover:text-[#1E1E1C] cursor-pointer text-lg">✕</button></div>
+            <div className="bg-[#F5F5F2] rounded-lg px-4 py-2.5"><p className="text-[10px] text-[#B0B0A8]">Medication</p><p className="text-sm font-semibold text-[#1E1E1C]">{editingMed.medication}</p></div>
+            <div>
+              <label className="text-[10px] font-semibold text-[#B0B0A8] uppercase tracking-wider">Dose</label>
+              <input type="text" autoComplete="off" value={editMedDose} onChange={e => setEditMedDose(e.target.value)} className="w-full mt-1 px-3 py-2.5 rounded-lg border border-[#EDEDEA] text-sm text-[#1E1E1C] outline-none focus:border-[#2D5A3D]"/>
+            </div>
+            <div>
+              <p className="text-[10px] font-semibold text-[#B0B0A8] uppercase tracking-wider mb-2">Injection Site</p>
+              <div className="grid grid-cols-2 gap-2">{INJECTION_SITES.map(s => <button key={s} onClick={() => setEditMedSite(s)} className={`text-xs px-3 py-2.5 rounded-lg border cursor-pointer ${editMedSite===s?'border-[#2D5A3D] bg-[#E8F0EB] text-[#2D5A3D] font-semibold':'border-[#EDEDEA] text-[#8B8B83]'}`}>{s}</button>)}</div>
+            </div>
+            <div>
+              <label className="text-[10px] font-semibold text-[#B0B0A8] uppercase tracking-wider">Date & Time</label>
+              <input type="datetime-local" value={editMedDate} onChange={e => setEditMedDate(e.target.value)} className="w-full mt-1 px-3 py-2.5 rounded-lg border border-[#EDEDEA] text-sm text-[#1E1E1C] outline-none focus:border-[#2D5A3D]"/>
+            </div>
+            <button onClick={saveEditMed} className="w-full bg-[#2D5A3D] text-white py-3 rounded-lg text-sm font-semibold cursor-pointer">Save Changes</button>
           </div>
         </div>
       )}

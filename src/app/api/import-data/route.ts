@@ -192,20 +192,34 @@ export async function POST(req: NextRequest) {
     const saved: Record<string, number> = {}
     const saveErrors: string[] = []
 
+    const toTimestamp = (date: string | undefined) =>
+      date ? new Date(date + 'T12:00:00Z').toISOString() : new Date().toISOString()
+
+    const toLbs = (weight: number, unit: string | undefined) =>
+      unit === 'kg' ? Math.round(weight * 2.205 * 10) / 10 : weight
+
     await saveTable('weight_logs', parsed.weight_logs, userId, saved, saveErrors, (w: any) => ({
       user_id: userId,
-      weight: w.unit === 'kg' ? Math.round(w.weight * 2.205 * 10) / 10 : w.weight,
-      logged_at: w.date ? new Date(w.date).toISOString() : new Date().toISOString(),
+      weight: toLbs(w.weight, w.unit),
+      logged_at: toTimestamp(w.date),
     }))
+
+    // Update starting_weight from earliest weight entry
+    if (parsed.weight_logs?.length) {
+      const sorted = [...parsed.weight_logs].sort((a: any, b: any) => a.date.localeCompare(b.date))
+      const earliest = sorted[0]
+      await supabaseAdmin.from('profiles').update({ starting_weight: toLbs(earliest.weight, earliest.unit) }).eq('id', userId)
+    }
 
     await saveTable('food_logs', parsed.food_logs, userId, saved, saveErrors, (f: any) => ({
       user_id: userId,
+      meal_type: 'other',
       food_name: f.food_name,
       calories: f.calories || null,
       protein: f.protein || null,
       carbs: f.carbs || null,
       fat: f.fat || null,
-      logged_at: f.date ? new Date(f.date).toISOString() : new Date().toISOString(),
+      logged_at: toTimestamp(f.date),
     }))
 
     await saveTable('medication_logs', parsed.medication_logs, userId, saved, saveErrors, (m: any) => ({
@@ -213,28 +227,30 @@ export async function POST(req: NextRequest) {
       medication: m.medication,
       dose: m.dose,
       injection_site: m.injection_site || null,
-      logged_at: m.date ? new Date(m.date).toISOString() : new Date().toISOString(),
+      logged_at: toTimestamp(m.date),
     }))
 
     await saveTable('water_logs', parsed.water_logs, userId, saved, saveErrors, (w: any) => ({
       user_id: userId,
       amount_oz: w.amount_oz,
-      logged_at: w.date ? new Date(w.date).toISOString() : new Date().toISOString(),
+      logged_at: toTimestamp(w.date),
     }))
 
     await saveTable('side_effect_logs', parsed.side_effect_logs, userId, saved, saveErrors, (s: any) => ({
       user_id: userId,
       symptom: s.symptom,
       severity: s.severity || 3,
-      logged_at: s.date ? new Date(s.date).toISOString() : new Date().toISOString(),
+      logged_at: toTimestamp(s.date),
     }))
 
-    await saveTable('exercise_logs', parsed.exercise_logs, userId, saved, saveErrors, (e: any) => ({
+    // Filter out exercise rows missing duration_minutes (NOT NULL column)
+    const validExercise = parsed.exercise_logs?.filter((e: any) => e.duration_min != null)
+    await saveTable('exercise_logs', validExercise, userId, saved, saveErrors, (e: any) => ({
       user_id: userId,
       exercise_type: e.exercise_type,
-      duration_min: e.duration_min || null,
+      duration_minutes: e.duration_min,
       notes: e.notes || null,
-      logged_at: e.date ? new Date(e.date).toISOString() : new Date().toISOString(),
+      logged_at: toTimestamp(e.date),
     }))
 
     const totalSaved = Object.values(saved).reduce((a, b) => a + b, 0)
@@ -275,6 +291,12 @@ async function saveTable(
 
   const mapped = rows.map(mapper)
   let insertedCount = 0
+
+  // Dedupe: remove existing rows at matching timestamps before inserting
+  const timestamps = mapped.map(r => r.logged_at).filter(Boolean)
+  if (timestamps.length > 0) {
+    await supabaseAdmin.from(table).delete().eq('user_id', userId).in('logged_at', timestamps)
+  }
 
   for (let i = 0; i < mapped.length; i += BATCH_SIZE) {
     const batch = mapped.slice(i, i + BATCH_SIZE)
