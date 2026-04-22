@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '../lib/supabase'
 import FirstRunModal from '../components/FirstRunModal'
 import MedicationLevelChart from '../components/MedicationLevelChart'
+import LogEntryMenu from '../components/LogEntryMenu'
 
 // ── Types ──────────────────────────────────────────────
 interface Profile { name: string; medication: string; dose: string; start_date: string; current_weight: string; goal_weight: string; primary_goal: string; biggest_challenge: string; exercise_level: string; first_run_complete?: boolean | null; protein_target_g?: number | null; water_target_oz?: number | null; injection_day?: string | null; injection_time?: string | null }
@@ -254,6 +255,33 @@ export default function Dashboard() {
   useEffect(() => {
     if (userId) fetchDateData(userId, selectedDate, nutritionView)
   }, [userId, selectedDate, nutritionView, fetchDateData])
+
+  // Re-fetch all data after an edit/delete
+  const refreshData = useCallback(async () => {
+    if (!userId) return
+    const today = startOfDay(new Date())
+    const monthAgo = addDays(today, -30)
+    const [meds, weights, effects, todayFoods, monthFoods, water, exercises, medChart] = await Promise.all([
+      supabase.from('medication_logs').select('*').eq('user_id', userId).order('logged_at', { ascending: false }).limit(20),
+      supabase.from('weight_logs').select('*').eq('user_id', userId).order('logged_at', { ascending: false }).limit(30),
+      supabase.from('side_effect_logs').select('*').eq('user_id', userId).order('logged_at', { ascending: false }).limit(10),
+      supabase.from('food_logs').select('*').eq('user_id', userId).gte('logged_at', today.toISOString()).order('logged_at', { ascending: true }),
+      supabase.from('food_logs').select('*').eq('user_id', userId).gte('logged_at', monthAgo.toISOString()).order('logged_at', { ascending: true }),
+      supabase.from('water_logs').select('*').eq('user_id', userId).gte('logged_at', today.toISOString()),
+      supabase.from('exercise_logs').select('*').eq('user_id', userId).order('logged_at', { ascending: false }).limit(10),
+      supabase.from('medication_logs').select('*').eq('user_id', userId).order('logged_at', { ascending: true }),
+    ])
+    setMedLogs(meds.data || [])
+    setWeightLogs(weights.data || [])
+    setSideEffectLogs(effects.data || [])
+    setTodayFoodLogs(todayFoods.data || [])
+    setAllFoodLogs(monthFoods.data || [])
+    setWaterLogs(water.data || [])
+    setExerciseLogs(exercises.data || [])
+    setMedChartLogs(medChart.data || [])
+    setStreak(calculateStreak(monthFoods.data || []))
+    fetchDateData(userId, selectedDate, nutritionView)
+  }, [userId, calculateStreak, fetchDateData, selectedDate, nutritionView])
 
   // ── Log Functions ──────────────────────────────────
   async function calculateMacros() {
@@ -630,7 +658,18 @@ export default function Dashboard() {
             </div>
             {nutritionView === 'day' && (<>
               <div className="h-2 bg-[#E0EBF5] rounded-full overflow-hidden mb-3"><div className="h-full bg-[#4A90D9] rounded-full" style={{ width: `${Math.min(100,(dateWater/waterTarget)*100)}%` }}/></div>
-              {isToday(selectedDate) && <div className="flex gap-2">{WATER_AMOUNTS.map(oz => <button key={oz} onClick={() => logWater(oz)} className="flex-1 bg-[#E0EBF5] text-[#4A90D9] py-2 rounded-lg text-xs font-semibold hover:bg-[#D0E0F0] transition-colors cursor-pointer">+{oz}oz</button>)}</div>}
+              {isToday(selectedDate) && <div className="flex gap-2 mb-3">{WATER_AMOUNTS.map(oz => <button key={oz} onClick={() => logWater(oz)} className="flex-1 bg-[#E0EBF5] text-[#4A90D9] py-2 rounded-lg text-xs font-semibold hover:bg-[#D0E0F0] transition-colors cursor-pointer">+{oz}oz</button>)}</div>}
+              {dateWaterLogs.length > 0 && <div className="space-y-1 mt-2">{dateWaterLogs.map(w => (
+                <div key={w.id} className="flex justify-between items-center py-1 border-t border-[#F5F5F2]">
+                  <span className="text-xs text-[#4A90D9] font-medium">{w.amount_oz}oz</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] text-[#B0B0A8]">{formatTime(w.logged_at)}</span>
+                    {userId && <LogEntryMenu logType="water_logs" logId={w.id} userId={userId} onUpdate={refreshData}
+                      fields={[{ key: 'amount_oz', label: 'Amount (oz)', type: 'number' }, { key: 'logged_at', label: 'Date & time', type: 'datetime-local' }]}
+                      currentValues={w} />}
+                  </div>
+                </div>
+              ))}</div>}
             </>)}
           </div>
 
@@ -649,8 +688,21 @@ export default function Dashboard() {
                 {mealFoods.length === 0 ? <p className="text-xs text-[#C5C5BE] italic">Nothing logged</p> : (
                   <div className="space-y-1.5">{mealFoods.map(f => (
                     <div key={f.id} className="flex justify-between items-center py-1.5 border-t border-[#F5F5F2]">
-                      <div><span className="text-sm text-[#1E1E1C]">{f.food_name}</span><span className="text-[10px] text-[#C5C5BE] ml-2">{formatTime(f.logged_at)}</span></div>
-                      <div className="flex gap-2 text-[10px]"><span className="text-[#B0B0A8]">{f.calories}cal</span><span className="text-[#2D5A3D] font-semibold">{f.protein}g P</span><span className="text-[#B0B0A8]">{f.carbs}g C</span><span className="text-[#B0B0A8]">{f.fat}g F</span></div>
+                      <div className="flex-1 min-w-0 mr-2"><span className="text-sm text-[#1E1E1C]">{f.food_name}</span><span className="text-[10px] text-[#C5C5BE] ml-2">{formatTime(f.logged_at)}</span></div>
+                      <div className="flex items-center gap-2">
+                        <div className="flex gap-2 text-[10px]"><span className="text-[#B0B0A8]">{f.calories}cal</span><span className="text-[#2D5A3D] font-semibold">{f.protein}g P</span><span className="text-[#B0B0A8]">{f.carbs}g C</span><span className="text-[#B0B0A8]">{f.fat}g F</span></div>
+                        {userId && <LogEntryMenu logType="food_logs" logId={f.id} userId={userId} onUpdate={refreshData}
+                          fields={[
+                            { key: 'meal_type', label: 'Meal', type: 'select', options: ['breakfast','lunch','dinner','snack'] },
+                            { key: 'food_name', label: 'Food', type: 'text' },
+                            { key: 'calories', label: 'Calories', type: 'number' },
+                            { key: 'protein', label: 'Protein (g)', type: 'number' },
+                            { key: 'carbs', label: 'Carbs (g)', type: 'number' },
+                            { key: 'fat', label: 'Fat (g)', type: 'number' },
+                            { key: 'logged_at', label: 'Date & time', type: 'datetime-local' },
+                          ]}
+                          currentValues={f} />}
+                      </div>
                     </div>
                   ))}</div>
                 )}
@@ -665,8 +717,21 @@ export default function Dashboard() {
               <div className="space-y-1.5 max-h-64 overflow-y-auto">
                 {dateFoodLogs.map(f => (
                   <div key={f.id} className="flex justify-between items-center py-1.5 border-t border-[#F5F5F2]">
-                    <div><span className="text-sm text-[#1E1E1C]">{f.food_name}</span><span className="text-[10px] text-[#C5C5BE] ml-2">{formatDate(f.logged_at)} {formatTime(f.logged_at)}</span></div>
-                    <div className="flex gap-2 text-[10px]"><span className="text-[#B0B0A8]">{f.calories}cal</span><span className="text-[#2D5A3D] font-semibold">{f.protein}g P</span></div>
+                    <div className="flex-1 min-w-0 mr-2"><span className="text-sm text-[#1E1E1C]">{f.food_name}</span><span className="text-[10px] text-[#C5C5BE] ml-2">{formatDate(f.logged_at)} {formatTime(f.logged_at)}</span></div>
+                    <div className="flex items-center gap-2">
+                      <div className="flex gap-2 text-[10px]"><span className="text-[#B0B0A8]">{f.calories}cal</span><span className="text-[#2D5A3D] font-semibold">{f.protein}g P</span></div>
+                      {userId && <LogEntryMenu logType="food_logs" logId={f.id} userId={userId} onUpdate={refreshData}
+                        fields={[
+                          { key: 'meal_type', label: 'Meal', type: 'select', options: ['breakfast','lunch','dinner','snack'] },
+                          { key: 'food_name', label: 'Food', type: 'text' },
+                          { key: 'calories', label: 'Calories', type: 'number' },
+                          { key: 'protein', label: 'Protein (g)', type: 'number' },
+                          { key: 'carbs', label: 'Carbs (g)', type: 'number' },
+                          { key: 'fat', label: 'Fat (g)', type: 'number' },
+                          { key: 'logged_at', label: 'Date & time', type: 'datetime-local' },
+                        ]}
+                        currentValues={f} />}
+                    </div>
                   </div>
                 ))}
               </div>
@@ -725,14 +790,38 @@ export default function Dashboard() {
               {progressPct !== null && <span className="text-[10px] text-[#2D5A3D] font-semibold bg-[#E8F0EB] px-2 py-0.5 rounded-full">{progressPct}% to goal</span>}
             </div>
             <WeightGraph data={weightLogs} goalWeight={goalWeight} />
-            {weightLogs.length > 0 && <div className="space-y-1.5 mt-3">{weightLogs.slice(0,5).map(w => <div key={w.id} className="flex justify-between items-center py-1 border-t border-[#F5F5F2]"><span className="text-sm text-[#1E1E1C] font-medium">{w.weight} lbs</span><span className="text-[10px] text-[#B0B0A8]">{formatDate(w.logged_at)} · {formatTime(w.logged_at)}</span></div>)}</div>}
+            {weightLogs.length > 0 && <div className="space-y-1.5 mt-3">{weightLogs.slice(0,5).map(w => <div key={w.id} className="flex justify-between items-center py-1 border-t border-[#F5F5F2]">
+              <span className="text-sm text-[#1E1E1C] font-medium">{w.weight} lbs</span>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] text-[#B0B0A8]">{formatDate(w.logged_at)} · {formatTime(w.logged_at)}</span>
+                {userId && <LogEntryMenu logType="weight_logs" logId={w.id} userId={userId} onUpdate={refreshData}
+                  fields={[{ key: 'weight', label: 'Weight (lbs)', type: 'number' }, { key: 'logged_at', label: 'Date & time', type: 'datetime-local' }]}
+                  currentValues={w} />}
+              </div>
+            </div>)}</div>}
           </div>
 
           {/* Exercise */}
-          {exerciseLogs.length > 0 && <div className="bg-white border border-[#EDEDEA] rounded-xl p-4"><h2 className="text-sm font-semibold text-[#1E1E1C] mb-3">Exercise</h2><div className="space-y-2">{exerciseLogs.slice(0,5).map(e => <div key={e.id} className="flex justify-between items-center py-1.5 border-t border-[#F5F5F2]"><div><span className="text-sm text-[#1E1E1C]">{e.exercise_type}</span><span className="text-xs text-[#4A90D9] ml-2 font-medium">{e.duration_minutes}min</span></div><span className="text-[10px] text-[#B0B0A8]">{formatDate(e.logged_at)}</span></div>)}</div></div>}
+          {exerciseLogs.length > 0 && <div className="bg-white border border-[#EDEDEA] rounded-xl p-4"><h2 className="text-sm font-semibold text-[#1E1E1C] mb-3">Exercise</h2><div className="space-y-2">{exerciseLogs.slice(0,5).map(e => <div key={e.id} className="flex justify-between items-center py-1.5 border-t border-[#F5F5F2]">
+            <div><span className="text-sm text-[#1E1E1C]">{e.exercise_type}</span><span className="text-xs text-[#4A90D9] ml-2 font-medium">{e.duration_minutes}min</span></div>
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] text-[#B0B0A8]">{formatDate(e.logged_at)}</span>
+              {userId && <LogEntryMenu logType="exercise_logs" logId={e.id} userId={userId} onUpdate={refreshData}
+                fields={[{ key: 'exercise_type', label: 'Type', type: 'text' }, { key: 'duration_minutes', label: 'Minutes', type: 'number' }, { key: 'notes', label: 'Notes', type: 'text' }, { key: 'logged_at', label: 'Date & time', type: 'datetime-local' }]}
+                currentValues={e} />}
+            </div>
+          </div>)}</div></div>}
 
           {/* Side effects */}
-          {sideEffectLogs.length > 0 && <div className="bg-white border border-[#EDEDEA] rounded-xl p-4"><h2 className="text-sm font-semibold text-[#1E1E1C] mb-3">Side Effects</h2><div className="space-y-2">{sideEffectLogs.slice(0,5).map(e => <div key={e.id} className="flex justify-between items-center py-1.5 border-t border-[#F5F5F2]"><div><span className="text-sm text-[#1E1E1C]">{e.symptom}</span><span className="text-xs text-[#C4742B] ml-2">{'●'.repeat(e.severity)}{'○'.repeat(5-e.severity)}</span></div><span className="text-[10px] text-[#B0B0A8]">{formatDate(e.logged_at)} · {formatTime(e.logged_at)}</span></div>)}</div></div>}
+          {sideEffectLogs.length > 0 && <div className="bg-white border border-[#EDEDEA] rounded-xl p-4"><h2 className="text-sm font-semibold text-[#1E1E1C] mb-3">Side Effects</h2><div className="space-y-2">{sideEffectLogs.slice(0,5).map(e => <div key={e.id} className="flex justify-between items-center py-1.5 border-t border-[#F5F5F2]">
+            <div><span className="text-sm text-[#1E1E1C]">{e.symptom}</span><span className="text-xs text-[#C4742B] ml-2">{'●'.repeat(e.severity)}{'○'.repeat(5-e.severity)}</span></div>
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] text-[#B0B0A8]">{formatDate(e.logged_at)} · {formatTime(e.logged_at)}</span>
+              {userId && <LogEntryMenu logType="side_effect_logs" logId={e.id} userId={userId} onUpdate={refreshData}
+                fields={[{ key: 'symptom', label: 'Symptom', type: 'text' }, { key: 'severity', label: 'Severity (1-5)', type: 'severity' }, { key: 'logged_at', label: 'Date & time', type: 'datetime-local' }]}
+                currentValues={e} />}
+            </div>
+          </div>)}</div></div>}
 
           {/* Mood/energy */}
           {checkinLogs.length > 0 && <div className="bg-white border border-[#EDEDEA] rounded-xl p-4"><h2 className="text-sm font-semibold text-[#1E1E1C] mb-3">Mood &amp; Energy</h2><div className="space-y-2">{checkinLogs.slice(0,5).map(c => <div key={c.id} className="flex justify-between items-center py-1.5 border-t border-[#F5F5F2]"><div className="flex gap-3"><span className="text-xs"><span className="text-[#B0B0A8]">Mood:</span> <span className="font-medium text-[#1E1E1C]">{MOOD_LABELS[c.mood-1]}</span></span><span className="text-xs"><span className="text-[#B0B0A8]">Energy:</span> <span className="font-medium text-[#1E1E1C]">{ENERGY_LABELS[c.energy-1]}</span></span></div><span className="text-[10px] text-[#B0B0A8]">{formatDate(c.logged_at)}</span></div>)}</div></div>}
