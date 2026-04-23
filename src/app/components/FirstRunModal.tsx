@@ -19,6 +19,7 @@ export default function FirstRunModal({ userId, name, medication, dose, currentW
   const router = useRouter()
   const [step, setStep] = useState<1 | 2 | 3>(1)
   const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
 
   const startingWeight = currentWeight ? parseFloat(currentWeight) : 180
   const [weight, setWeight] = useState<number>(Number.isFinite(startingWeight) ? Math.round(startingWeight) : 180)
@@ -29,8 +30,13 @@ export default function FirstRunModal({ userId, name, medication, dose, currentW
   async function saveWeight() {
     if (!weight || weight <= 0) return
     setSaving(true)
+    setSaveError(null)
     try {
-      await supabase.from('weight_logs').insert({ user_id: userId, weight })
+      const { error } = await supabase.from('weight_logs').insert({ user_id: userId, weight })
+      if (error) {
+        setSaveError(error.message)
+        return
+      }
       setStep(2)
     } finally {
       setSaving(false)
@@ -40,9 +46,10 @@ export default function FirstRunModal({ userId, name, medication, dose, currentW
   async function saveInjection() {
     if (!injectionDate) return
     setSaving(true)
+    setSaveError(null)
     try {
       const loggedAt = new Date(`${injectionDate}T12:00:00`).toISOString()
-      await supabase.from('medication_logs').insert({
+      const { error } = await supabase.from('medication_logs').insert({
         user_id: userId,
         medication: medication || 'Medication',
         dose: dose || '',
@@ -50,6 +57,10 @@ export default function FirstRunModal({ userId, name, medication, dose, currentW
         notes: 'First-run setup',
         logged_at: loggedAt,
       })
+      if (error) {
+        setSaveError(error.message)
+        return
+      }
       setStep(3)
     } finally {
       setSaving(false)
@@ -58,15 +69,21 @@ export default function FirstRunModal({ userId, name, medication, dose, currentW
 
   async function finishAndGoToNova() {
     setSaving(true)
+    setSaveError(null)
     try {
       const firstName = name?.split(' ')[0] || 'there'
       const med = medication || 'your medication'
       const welcome = `Hey ${firstName}! I'm Nova, your health coach. I see you're on ${med}. How's it been going so far? Any side effects or questions I can help with?`
 
-      await Promise.all([
+      const results = await Promise.all([
         supabase.from('messages').insert({ user_id: userId, role: 'assistant', content: welcome }),
         supabase.from('profiles').update({ first_run_complete: true }).eq('id', userId),
       ])
+      const firstError = results.find(r => r.error)?.error
+      if (firstError) {
+        setSaveError(firstError.message)
+        return
+      }
       onComplete()
       router.push('/chat')
     } finally {
@@ -100,6 +117,11 @@ export default function FirstRunModal({ userId, name, medication, dose, currentW
 
         {/* Body */}
         <div className="px-6 py-7">
+          {saveError && (
+            <div className="mb-4 px-4 py-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm">
+              {saveError}
+            </div>
+          )}
           {step === 1 && (
             <div>
               <p className="text-[10px] font-semibold text-[#B0B0A8] uppercase tracking-wider mb-2">Step 1 of 3</p>

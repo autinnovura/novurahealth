@@ -70,44 +70,40 @@ function Chat() {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
   }, [messages, loading])
 
-  const sendMessage = useCallback(async (text?: string) => {
-    const msg = (text || input).trim()
-    if (!msg || !userId) return
+  const sendMessage = useCallback(async (msg?: string) => {
+    const text = (msg || input).trim()
+    if (!text || !userId) return
     setInput('')
 
-    const userMsg: Message = { role: 'user', content: msg }
-    setMessages(prev => {
-      const updated = [...prev, userMsg]
+    const userMsg: Message = { role: 'user', content: text }
+    const updated = [...messages, userMsg]
+    setMessages(updated)
 
-      // Save user message
-      supabase.from('messages').insert({ user_id: userId, role: 'user', content: msg }).then()
+    // Save user message (fire-and-forget but with error logging)
+    supabase.from('messages').insert({ user_id: userId, role: 'user', content: text })
+      .then(({ error }) => { if (error) console.error('Failed to save message:', error) })
 
-      // Fire off the API call
-      setLoading(true)
-      fetch('/api/chat', {
+    setLoading(true)
+    try {
+      const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           messages: updated.map(m => ({ role: m.role, content: m.content })),
         }),
       })
-        .then(res => res.json())
-        .then(({ message }) => {
-          const novaMsg: Message = { role: 'assistant', content: message }
-          setMessages(prev2 => [...prev2, novaMsg])
-          supabase.from('messages').insert({ user_id: userId, role: 'assistant', content: message }).then()
-        })
-        .catch(() => {
-          setMessages(prev2 => [...prev2, { role: 'assistant', content: "Having trouble connecting. Try again in a sec." }])
-        })
-        .finally(() => {
-          setLoading(false)
-          inputRef.current?.focus()
-        })
-
-      return updated
-    })
-  }, [userId, input])
+      const { message } = await res.json()
+      const novaMsg: Message = { role: 'assistant', content: message }
+      setMessages(prev => [...prev, novaMsg])
+      supabase.from('messages').insert({ user_id: userId, role: 'assistant', content: message })
+        .then(({ error }) => { if (error) console.error('Failed to save message:', error) })
+    } catch {
+      setMessages(prev => [...prev, { role: 'assistant', content: "Having trouble connecting. Try again in a sec." }])
+    } finally {
+      setLoading(false)
+      inputRef.current?.focus()
+    }
+  }, [userId, input, messages])
 
   // Auto-send prompt from URL query param (e.g. ?prompt=What+should+I+eat)
   useEffect(() => {

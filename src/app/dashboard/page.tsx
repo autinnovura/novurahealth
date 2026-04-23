@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
+import { toast } from 'sonner'
 import { supabase } from '../lib/supabase'
 import FirstRunModal from '../components/FirstRunModal'
 import MedicationLevelChart from '../components/MedicationLevelChart'
@@ -173,6 +174,7 @@ export default function Dashboard() {
   const [exerciseNotes, setExerciseNotes] = useState('')
   const [streak, setStreak] = useState(0)
   const [showFirstRun, setShowFirstRun] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
   const [medMenuId, setMedMenuId] = useState<string | null>(null)
   const [editingMed, setEditingMed] = useState<MedLog | null>(null)
   const [editMedDose, setEditMedDose] = useState('')
@@ -299,62 +301,97 @@ export default function Dashboard() {
   }
 
   async function logFood() {
-    if (!userId || !foodName) return
-    const { data } = await supabase.from('food_logs').insert({ user_id: userId, meal_type: mealType, food_name: foodName, calories: parseInt(foodCalories)||0, protein: parseInt(foodProtein)||0, carbs: parseInt(foodCarbs)||0, fat: parseInt(foodFat)||0 }).select().single()
-    if (data) { setTodayFoodLogs([...todayFoodLogs, data]); setAllFoodLogs([...allFoodLogs, data]); setDateFoodLogs([...dateFoodLogs, data]) }
-    setModal(null); setFoodName(''); setFoodCalories(''); setFoodProtein(''); setFoodCarbs(''); setFoodFat('')
+    if (isSaving || !userId || !foodName) return
+    setIsSaving(true)
+    try {
+      const { data, error } = await supabase.from('food_logs').insert({ user_id: userId, meal_type: mealType, food_name: foodName, calories: parseInt(foodCalories)||0, protein: parseInt(foodProtein)||0, carbs: parseInt(foodCarbs)||0, fat: parseInt(foodFat)||0 }).select().single()
+      if (error) { toast.error('Failed to save: ' + error.message); return }
+      if (data) { setTodayFoodLogs(prev => [...prev, data]); setAllFoodLogs(prev => [...prev, data]); setDateFoodLogs(prev => [...prev, data]) }
+      toast.success('Logged!')
+      setModal(null); setFoodName(''); setFoodCalories(''); setFoodProtein(''); setFoodCarbs(''); setFoodFat('')
+    } finally { setIsSaving(false) }
   }
 
   async function logMedication() {
-    if (!userId || !profile) return
-    const finalDose = medDose === 'custom' ? `${customDose}mg` : medDose || profile.dose
-    const { data } = await supabase.from('medication_logs').insert({ user_id: userId, medication: profile.medication, dose: finalDose, injection_site: injectionSite, notes: medNotes }).select().single()
-    if (data) {
-      setMedLogs([data, ...medLogs])
-      // Update profile dose if changed
-      if (finalDose !== profile.dose) {
-        await supabase.from('profiles').update({ dose: finalDose }).eq('id', userId)
-        setProfile({ ...profile, dose: finalDose })
+    if (isSaving || !userId || !profile) return
+    setIsSaving(true)
+    try {
+      const finalDose = medDose === 'custom' ? `${customDose}mg` : medDose || profile.dose
+      const { data, error } = await supabase.from('medication_logs').insert({ user_id: userId, medication: profile.medication, dose: finalDose, injection_site: injectionSite, notes: medNotes }).select().single()
+      if (error) { toast.error('Failed to save: ' + error.message); return }
+      if (data) {
+        setMedLogs(prev => [data, ...prev])
+        // Update profile dose if changed
+        if (finalDose !== profile.dose) {
+          await supabase.from('profiles').update({ dose: finalDose }).eq('id', userId)
+          setProfile({ ...profile, dose: finalDose })
+        }
+        // Re-fetch chart logs so the chart updates immediately
+        const { data: updated } = await supabase.from('medication_logs').select('*').eq('user_id', userId).order('logged_at', { ascending: true })
+        if (updated) setMedChartLogs(updated)
       }
-      // Re-fetch chart logs so the chart updates immediately
-      const { data: updated } = await supabase.from('medication_logs').select('*').eq('user_id', userId).order('logged_at', { ascending: true })
-      if (updated) setMedChartLogs(updated)
-    }
-    setModal(null); setInjectionSite(''); setMedDose(''); setCustomDose(''); setMedNotes('')
+      toast.success('Logged!')
+      setModal(null); setInjectionSite(''); setMedDose(''); setCustomDose(''); setMedNotes('')
+    } finally { setIsSaving(false) }
   }
 
   async function logWeightEntry() {
-    if (!userId || !newWeight) return
-    const { data } = await supabase.from('weight_logs').insert({ user_id: userId, weight: parseFloat(newWeight) }).select().single()
-    if (data) setWeightLogs([data, ...weightLogs])
-    setModal(null); setNewWeight('')
+    if (isSaving || !userId || !newWeight) return
+    setIsSaving(true)
+    try {
+      const { data, error } = await supabase.from('weight_logs').insert({ user_id: userId, weight: parseFloat(newWeight) }).select().single()
+      if (error) { toast.error('Failed to save: ' + error.message); return }
+      if (data) setWeightLogs(prev => [data, ...prev])
+      toast.success('Logged!')
+      setModal(null); setNewWeight('')
+    } finally { setIsSaving(false) }
   }
 
   async function logSideEffect() {
-    if (!userId || !symptom) return
-    const { data } = await supabase.from('side_effect_logs').insert({ user_id: userId, symptom, severity }).select().single()
-    if (data) setSideEffectLogs([data, ...sideEffectLogs])
-    setModal(null); setSymptom(''); setSeverity(3)
+    if (isSaving || !userId || !symptom) return
+    setIsSaving(true)
+    try {
+      const { data, error } = await supabase.from('side_effect_logs').insert({ user_id: userId, symptom, severity }).select().single()
+      if (error) { toast.error('Failed to save: ' + error.message); return }
+      if (data) setSideEffectLogs(prev => [data, ...prev])
+      toast.success('Logged!')
+      setModal(null); setSymptom(''); setSeverity(3)
+    } finally { setIsSaving(false) }
   }
 
   async function logWater(oz: number) {
-    if (!userId) return
-    const { data } = await supabase.from('water_logs').insert({ user_id: userId, amount_oz: oz }).select().single()
-    if (data) { setWaterLogs([...waterLogs, data]); setDateWaterLogs([...dateWaterLogs, data]) }
+    if (isSaving || !userId) return
+    setIsSaving(true)
+    try {
+      const { data, error } = await supabase.from('water_logs').insert({ user_id: userId, amount_oz: oz }).select().single()
+      if (error) { toast.error('Failed to save: ' + error.message); return }
+      if (data) { setWaterLogs(prev => [...prev, data]); setDateWaterLogs(prev => [...prev, data]) }
+      toast.success('Logged!')
+    } finally { setIsSaving(false) }
   }
 
   async function logCheckin() {
-    if (!userId) return
-    const { data } = await supabase.from('checkin_logs').insert({ user_id: userId, mood: checkinMood, energy: checkinEnergy, notes: checkinNotes }).select().single()
-    if (data) setCheckinLogs([data, ...checkinLogs])
-    setModal(null); setCheckinMood(3); setCheckinEnergy(3); setCheckinNotes('')
+    if (isSaving || !userId) return
+    setIsSaving(true)
+    try {
+      const { data, error } = await supabase.from('checkin_logs').insert({ user_id: userId, mood: checkinMood, energy: checkinEnergy, notes: checkinNotes }).select().single()
+      if (error) { toast.error('Failed to save: ' + error.message); return }
+      if (data) setCheckinLogs(prev => [data, ...prev])
+      toast.success('Logged!')
+      setModal(null); setCheckinMood(3); setCheckinEnergy(3); setCheckinNotes('')
+    } finally { setIsSaving(false) }
   }
 
   async function logExercise() {
-    if (!userId || !exerciseType || !exerciseDuration) return
-    const { data } = await supabase.from('exercise_logs').insert({ user_id: userId, exercise_type: exerciseType, duration_minutes: parseInt(exerciseDuration)||0, notes: exerciseNotes }).select().single()
-    if (data) setExerciseLogs([data, ...exerciseLogs])
-    setModal(null); setExerciseType(''); setExerciseDuration(''); setExerciseNotes('')
+    if (isSaving || !userId || !exerciseType || !exerciseDuration) return
+    setIsSaving(true)
+    try {
+      const { data, error } = await supabase.from('exercise_logs').insert({ user_id: userId, exercise_type: exerciseType, duration_minutes: parseInt(exerciseDuration)||0, notes: exerciseNotes }).select().single()
+      if (error) { toast.error('Failed to save: ' + error.message); return }
+      if (data) setExerciseLogs(prev => [data, ...prev])
+      toast.success('Logged!')
+      setModal(null); setExerciseType(''); setExerciseDuration(''); setExerciseNotes('')
+    } finally { setIsSaving(false) }
   }
 
   async function deleteMedLog(id: string) {
@@ -1102,7 +1139,7 @@ export default function Dashboard() {
             <div className="grid grid-cols-2 gap-2">
               {[{l:'Calories',v:foodCalories,s:setFoodCalories,c:'#0D1F16'},{l:'Protein (g)',v:foodProtein,s:setFoodProtein,c:'#1F4B32'},{l:'Carbs (g)',v:foodCarbs,s:setFoodCarbs,c:'#C4742B'},{l:'Fat (g)',v:foodFat,s:setFoodFat,c:'#6B7A72'}].map(f => <div key={f.l}><label className="text-[9px] font-semibold uppercase tracking-wider" style={{color:f.c}}>{f.l}</label><input type="number" autoComplete="off" value={f.v} onChange={e=>f.s(e.target.value)} placeholder="0" className="w-full px-4 py-2.5 rounded-2xl border border-[#EAF2EB] text-sm text-[#0D1F16] outline-none focus:border-[#1F4B32] transition-all duration-300"/></div>)}
             </div>
-            <button onClick={logFood} disabled={!foodName.trim()} className="w-full bg-gradient-to-r from-[#1F4B32] to-[#2D6B45] text-white py-3.5 rounded-2xl text-sm font-semibold cursor-pointer disabled:opacity-30 hover:shadow-[0_4px_16px_-4px_rgba(31,75,50,0.4)] transition-all duration-300">Save</button>
+            <button onClick={logFood} disabled={!foodName.trim() || isSaving} className="w-full bg-gradient-to-r from-[#1F4B32] to-[#2D6B45] text-white py-3.5 rounded-2xl text-sm font-semibold cursor-pointer disabled:opacity-30 hover:shadow-[0_4px_16px_-4px_rgba(31,75,50,0.4)] transition-all duration-300">Save</button>
           </motion.div>
         </div>
       )}
@@ -1130,7 +1167,7 @@ export default function Dashboard() {
             </div>
             <div><p className="text-[10px] font-semibold text-[#6B7A72] uppercase tracking-wider mb-2">Injection Site</p><div className="grid grid-cols-2 gap-2">{INJECTION_SITES.map(s => <button key={s} onClick={() => setInjectionSite(s)} className={`text-xs px-3 py-2.5 rounded-2xl border cursor-pointer transition-all duration-300 ${injectionSite===s?'border-[#1F4B32] bg-[#EAF2EB] text-[#1F4B32] font-semibold':'border-[#EAF2EB] text-[#6B7A72]'}`}>{s}</button>)}</div></div>
             <input type="text" autoComplete="off" value={medNotes} onChange={e => setMedNotes(e.target.value)} placeholder="Notes (optional)" className="w-full px-4 py-3 rounded-2xl border border-[#EAF2EB] text-sm text-[#0D1F16] outline-none focus:border-[#1F4B32] placeholder:text-[#6B7A72]/40 transition-all duration-300"/>
-            <button onClick={logMedication} className="w-full bg-gradient-to-r from-[#1F4B32] to-[#2D6B45] text-white py-3.5 rounded-2xl text-sm font-semibold cursor-pointer hover:shadow-[0_4px_16px_-4px_rgba(31,75,50,0.4)] transition-all duration-300">Save</button>
+            <button onClick={logMedication} disabled={isSaving} className="w-full bg-gradient-to-r from-[#1F4B32] to-[#2D6B45] text-white py-3.5 rounded-2xl text-sm font-semibold cursor-pointer disabled:opacity-30 hover:shadow-[0_4px_16px_-4px_rgba(31,75,50,0.4)] transition-all duration-300">Save</button>
           </motion.div>
         </div>
       )}
@@ -1142,7 +1179,7 @@ export default function Dashboard() {
             <div className="flex justify-between items-center"><h2 className="text-base font-bold text-[#0D1F16]">Log Weight</h2><button onClick={() => setModal(null)} className="w-8 h-8 rounded-xl bg-[#F5F8F3] flex items-center justify-center text-[#6B7A72] hover:bg-[#EAF2EB] cursor-pointer transition-all duration-300">✕</button></div>
             <input type="number" autoComplete="off" value={newWeight} onChange={e => setNewWeight(e.target.value)} placeholder="Weight in pounds" autoFocus className="w-full px-4 py-5 rounded-2xl border-2 border-[#EAF2EB] text-2xl text-center text-[#0D1F16] font-bold outline-none focus:border-[#1F4B32] placeholder:text-[#6B7A72]/30 placeholder:font-normal placeholder:text-base transition-all duration-300" style={{ fontVariantNumeric: 'tabular-nums' }}/>
             {latestWeight&&newWeight&&<p className={`text-center text-sm font-medium ${parseFloat(newWeight)<latestWeight?'text-[#1F4B32]':parseFloat(newWeight)>latestWeight?'text-[#C4742B]':'text-[#6B7A72]'}`}>{parseFloat(newWeight)<latestWeight?`↓ ${(latestWeight-parseFloat(newWeight)).toFixed(1)} lbs`:parseFloat(newWeight)>latestWeight?`↑ ${(parseFloat(newWeight)-latestWeight).toFixed(1)} lbs`:'Same'}</p>}
-            <button onClick={logWeightEntry} disabled={!newWeight} className="w-full bg-gradient-to-r from-[#C4742B] to-[#D4843B] text-white py-3.5 rounded-2xl text-sm font-semibold cursor-pointer disabled:opacity-30 hover:shadow-[0_4px_16px_-4px_rgba(196,116,43,0.4)] transition-all duration-300">Save</button>
+            <button onClick={logWeightEntry} disabled={!newWeight || isSaving} className="w-full bg-gradient-to-r from-[#C4742B] to-[#D4843B] text-white py-3.5 rounded-2xl text-sm font-semibold cursor-pointer disabled:opacity-30 hover:shadow-[0_4px_16px_-4px_rgba(196,116,43,0.4)] transition-all duration-300">Save</button>
           </motion.div>
         </div>
       )}
@@ -1154,7 +1191,7 @@ export default function Dashboard() {
             <div className="flex justify-between items-center"><h2 className="text-base font-bold text-[#0D1F16]">Log Side Effect</h2><button onClick={() => setModal(null)} className="w-8 h-8 rounded-xl bg-[#F5F8F3] flex items-center justify-center text-[#6B7A72] hover:bg-[#EAF2EB] cursor-pointer transition-all duration-300">✕</button></div>
             <div><p className="text-[10px] font-semibold text-[#6B7A72] uppercase tracking-wider mb-2">Symptom</p><div className="flex flex-wrap gap-1.5">{SYMPTOMS.map(s => <button key={s} onClick={() => setSymptom(s)} className={`text-xs px-3.5 py-2 rounded-full border cursor-pointer transition-all duration-300 ${symptom===s?'border-[#1F4B32] bg-[#EAF2EB] text-[#1F4B32] font-semibold':'border-[#EAF2EB] text-[#6B7A72]'}`}>{s}</button>)}</div></div>
             <div><p className="text-[10px] font-semibold text-[#6B7A72] uppercase tracking-wider mb-2">Severity: {severity}/5</p><div className="flex gap-2">{[1,2,3,4,5].map(n => <button key={n} onClick={() => setSeverity(n)} className={`flex-1 py-3 rounded-2xl text-sm font-bold cursor-pointer transition-all duration-300 ${n<=severity?'bg-[#C4742B] text-white':'bg-[#F5F8F3] text-[#6B7A72]/40'}`}>{n}</button>)}</div></div>
-            <button onClick={logSideEffect} disabled={!symptom} className="w-full bg-gradient-to-r from-[#6B7A72] to-[#7B8A82] text-white py-3.5 rounded-2xl text-sm font-semibold cursor-pointer disabled:opacity-30 transition-all duration-300">Save</button>
+            <button onClick={logSideEffect} disabled={!symptom || isSaving} className="w-full bg-gradient-to-r from-[#6B7A72] to-[#7B8A82] text-white py-3.5 rounded-2xl text-sm font-semibold cursor-pointer disabled:opacity-30 transition-all duration-300">Save</button>
           </motion.div>
         </div>
       )}
@@ -1167,7 +1204,7 @@ export default function Dashboard() {
             <div><p className="text-[10px] font-semibold text-[#6B7A72] uppercase tracking-wider mb-2">Mood</p><div className="flex gap-2">{MOOD_LABELS.map((l,i) => <button key={l} onClick={() => setCheckinMood(i+1)} className={`flex-1 py-2.5 rounded-2xl text-[10px] font-semibold cursor-pointer transition-all duration-300 ${checkinMood===i+1?'bg-gradient-to-r from-[#1F4B32] to-[#2D6B45] text-white':'bg-[#F5F8F3] text-[#6B7A72]'}`}>{l}</button>)}</div></div>
             <div><p className="text-[10px] font-semibold text-[#6B7A72] uppercase tracking-wider mb-2">Energy</p><div className="flex gap-2">{ENERGY_LABELS.map((l,i) => <button key={l} onClick={() => setCheckinEnergy(i+1)} className={`flex-1 py-2.5 rounded-2xl text-[10px] font-semibold cursor-pointer transition-all duration-300 ${checkinEnergy===i+1?'bg-[#4A90D9] text-white':'bg-[#F5F8F3] text-[#6B7A72]'}`}>{l}</button>)}</div></div>
             <input type="text" autoComplete="off" value={checkinNotes} onChange={e => setCheckinNotes(e.target.value)} placeholder="Notes (optional)" className="w-full px-4 py-3 rounded-2xl border border-[#EAF2EB] text-sm text-[#0D1F16] outline-none focus:border-[#1F4B32] placeholder:text-[#6B7A72]/40 transition-all duration-300"/>
-            <button onClick={logCheckin} className="w-full bg-gradient-to-r from-[#1F4B32] to-[#2D6B45] text-white py-3.5 rounded-2xl text-sm font-semibold cursor-pointer hover:shadow-[0_4px_16px_-4px_rgba(31,75,50,0.4)] transition-all duration-300">Save</button>
+            <button onClick={logCheckin} disabled={isSaving} className="w-full bg-gradient-to-r from-[#1F4B32] to-[#2D6B45] text-white py-3.5 rounded-2xl text-sm font-semibold cursor-pointer disabled:opacity-30 hover:shadow-[0_4px_16px_-4px_rgba(31,75,50,0.4)] transition-all duration-300">Save</button>
           </motion.div>
         </div>
       )}
@@ -1180,7 +1217,7 @@ export default function Dashboard() {
             <div><p className="text-[10px] font-semibold text-[#6B7A72] uppercase tracking-wider mb-2">Type</p><div className="flex flex-wrap gap-1.5">{EXERCISE_TYPES.map(t => <button key={t} onClick={() => setExerciseType(t)} className={`text-xs px-3.5 py-2 rounded-full border cursor-pointer transition-all duration-300 ${exerciseType===t?'border-[#4A90D9] bg-[#EDF5FC] text-[#4A90D9] font-semibold':'border-[#EAF2EB] text-[#6B7A72]'}`}>{t}</button>)}</div></div>
             <div><label className="text-[9px] font-semibold text-[#6B7A72] uppercase tracking-wider">Minutes</label><input type="number" autoComplete="off" value={exerciseDuration} onChange={e => setExerciseDuration(e.target.value)} placeholder="30" className="w-full px-4 py-3 rounded-2xl border border-[#EAF2EB] text-sm text-[#0D1F16] outline-none focus:border-[#4A90D9] transition-all duration-300"/></div>
             <input type="text" autoComplete="off" value={exerciseNotes} onChange={e => setExerciseNotes(e.target.value)} placeholder="Notes (optional)" className="w-full px-4 py-3 rounded-2xl border border-[#EAF2EB] text-sm text-[#0D1F16] outline-none placeholder:text-[#6B7A72]/40 transition-all duration-300"/>
-            <button onClick={logExercise} disabled={!exerciseType||!exerciseDuration} className="w-full bg-[#4A90D9] text-white py-3.5 rounded-2xl text-sm font-semibold cursor-pointer disabled:opacity-30 hover:shadow-[0_4px_16px_-4px_rgba(74,144,217,0.4)] transition-all duration-300">Save</button>
+            <button onClick={logExercise} disabled={!exerciseType||!exerciseDuration||isSaving} className="w-full bg-[#4A90D9] text-white py-3.5 rounded-2xl text-sm font-semibold cursor-pointer disabled:opacity-30 hover:shadow-[0_4px_16px_-4px_rgba(74,144,217,0.4)] transition-all duration-300">Save</button>
           </motion.div>
         </div>
       )}

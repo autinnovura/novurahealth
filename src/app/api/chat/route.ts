@@ -181,7 +181,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Rate limit exceeded. Please slow down.' }, { status: 429 })
   }
 
-  const { messages } = await req.json()
+  let body: { messages?: any }
+  try {
+    body = await req.json()
+  } catch {
+    return NextResponse.json({ error: 'Invalid request body' }, { status: 400 })
+  }
+  const { messages } = body
   if (!messages?.length) {
     return NextResponse.json({ error: 'Missing data' }, { status: 400 })
   }
@@ -413,14 +419,19 @@ Max 1 question per response. Never more.
 
       const result = await res.json()
 
+      // Guard against empty/missing content
+      if (!result?.content) {
+        if (finalResponseText) break
+        return NextResponse.json({ message: "Nova is temporarily unavailable. Please try again." })
+      }
+
       // Add assistant response to conversation history
       conversationMessages.push({ role: 'assistant', content: result.content })
 
       // Collect any text from this iteration
       const textBlocks = (result.content || []).filter((b: any) => b.type === 'text')
-      if (textBlocks.length > 0) {
-        finalResponseText = textBlocks.map((b: any) => b.text).join('\n').trim()
-      }
+      const joined = textBlocks.map((b: any) => b.text).join('\n').trim()
+      if (joined) finalResponseText = joined
 
       // If no tool use requested, we're done
       if (result.stop_reason !== 'tool_use') break
