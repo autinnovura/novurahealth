@@ -620,17 +620,26 @@ export default function Dashboard() {
         </div>
       </header>
 
-      {/* TABS */}
+      {/* TABS — segmented control */}
       <div className="bg-white/80 backdrop-blur-md border-b border-[#EAF2EB] sticky top-0 z-40">
-        <div className="max-w-2xl mx-auto flex">
-          {(['overview','nutrition','health'] as const).map(tab => (
-            <button key={tab} onClick={() => setActiveTab(tab)}
-              className={`flex-1 py-3 text-xs font-semibold uppercase tracking-wider transition-all duration-300 cursor-pointer ${
-                activeTab === tab
-                  ? 'text-[#1F4B32] border-b-2 border-[#7FFFA4]'
-                  : 'text-[#6B7A72]/50 hover:text-[#6B7A72]'
-              }`}>{tab}</button>
-          ))}
+        <div className="max-w-2xl mx-auto px-4 py-2">
+          <div className="relative bg-[#F5F8F3] rounded-xl p-1 flex">
+            {(['overview','nutrition','health'] as const).map(tab => (
+              <button key={tab} onClick={() => setActiveTab(tab)}
+                className={`relative flex-1 py-2.5 text-xs font-semibold uppercase tracking-wider transition-all duration-200 z-10 cursor-pointer ${
+                  activeTab === tab ? 'text-[#1F4B32]' : 'text-[#6B7A72]/50 hover:text-[#6B7A72]'
+                }`}>
+                {activeTab === tab && (
+                  <motion.div
+                    layoutId="dashboardTabIndicator"
+                    className="absolute inset-0 bg-white rounded-lg shadow-sm"
+                    transition={{ type: 'spring', bounce: 0.15, duration: 0.5 }}
+                  />
+                )}
+                <span className="relative z-10">{tab}</span>
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
