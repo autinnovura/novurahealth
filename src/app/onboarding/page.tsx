@@ -3,28 +3,13 @@
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '../lib/supabase'
+import { getMedicationChoices, findMedicationByLabel } from '../lib/medications'
+import { Syringe, Pill, ChevronDown, ChevronUp, AlertTriangle, Bell } from 'lucide-react'
 
-const MEDICATIONS = [
-  { label: 'Ozempic', sub: 'semaglutide' },
-  { label: 'Wegovy', sub: 'semaglutide' },
-  { label: 'Mounjaro', sub: 'tirzepatide' },
-  { label: 'Zepbound', sub: 'tirzepatide' },
-  { label: 'Saxenda', sub: 'liraglutide' },
-  { label: 'Rybelsus', sub: 'oral semaglutide' },
-  { label: 'Other', sub: '' },
-]
-
-const DOSES: Record<string, string[]> = {
-  Ozempic: ['0.25', '0.5', '1', '2'],
-  Wegovy: ['0.25', '0.5', '1', '1.7', '2.4'],
-  Mounjaro: ['2.5', '5', '7.5', '10', '12.5', '15'],
-  Zepbound: ['2.5', '5', '7.5', '10', '12.5', '15'],
-  Saxenda: ['0.6', '1.2', '1.8', '2.4', '3'],
-  Rybelsus: ['3', '7', '14'],
-  Other: [],
-}
+const { available: MEDICATIONS, comingSoon: COMING_SOON, restricted: RESTRICTED } = getMedicationChoices()
 
 const FREQUENCIES = ['Weekly', 'Every 2 weeks', 'Daily', 'Other']
+const OTHER_MED = { label: 'Other', sub: '', route: 'injection' as const, frequency: 'weekly' as const, mechanism: 'GLP-1', doses: [] as string[], isNew: false, id: 'other', notes: undefined as string | undefined }
 
 const CALORIE_RANGES = ['Under 1,200', '1,200 – 1,500', '1,500 – 1,800', '1,800 – 2,200', '2,200+', 'Not sure']
 const PROTEIN_RANGES = ['Under 50g', '50 – 80g', '80 – 120g', '120g+', 'Not sure']
@@ -179,42 +164,101 @@ export default function Onboarding() {
 
           {/* STEP 2: Medication */}
           {step === 2 && (
-            <div className="space-y-2">
-              {MEDICATIONS.map(m => (
-                <button key={m.label} onClick={() => { setMedication(m.label); setDose(''); setCustomDose('') }}
-                  className={`w-full flex items-center justify-between px-4 py-3.5 rounded-3xl border-2 cursor-pointer transition-all ${medication === m.label ? 'border-[#1F4B32] bg-[#EAF2EB] shadow-[0_4px_24px_-8px_rgba(31,75,50,0.08)]' : 'border-[#EAF2EB] bg-white hover:border-[#6B7A72]/30'}`}>
-                  <span className={`text-sm ${medication === m.label ? 'text-[#1F4B32] font-semibold' : 'text-[#0D1F16]'}`}>{m.label}</span>
-                  {m.sub && <span className="text-xs text-[#6B7A72]">{m.sub}</span>}
-                </button>
+            <div className="space-y-3">
+              {/* Available medications */}
+              {[...MEDICATIONS, OTHER_MED].map(m => {
+                const isSelected = medication === m.label
+                const RouteIcon = m.route === 'oral' ? Pill : Syringe
+                return (
+                  <button key={m.id} onClick={() => {
+                    setMedication(m.label)
+                    setDose(''); setCustomDose('')
+                    // Auto-set frequency based on medication
+                    const med = findMedicationByLabel(m.label)
+                    if (med) setFrequency(med.frequency === 'daily' ? 'Daily' : 'Weekly')
+                  }}
+                    className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-3xl border-2 cursor-pointer transition-all text-left ${isSelected ? 'border-[#1F4B32] bg-[#EAF2EB] shadow-[0_4px_24px_-8px_rgba(31,75,50,0.08)]' : 'border-[#EAF2EB] bg-white hover:border-[#6B7A72]/30'}`}>
+                    <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${isSelected ? 'bg-[#1F4B32]/10' : 'bg-[#F5F8F3]'}`}>
+                      <RouteIcon className={`w-4 h-4 ${isSelected ? 'text-[#1F4B32]' : 'text-[#6B7A72]'}`} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className={`text-sm ${isSelected ? 'text-[#1F4B32] font-semibold' : 'text-[#0D1F16]'}`}>{m.label}</span>
+                        {m.isNew && <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-[#7FFFA4]/20 text-[#1F4B32]">New</span>}
+                      </div>
+                      {m.sub && (
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                          <span className="text-[10px] text-[#6B7A72]">{m.sub}</span>
+                          <span className="text-[10px] text-[#6B7A72]/40">·</span>
+                          <span className="text-[10px] text-[#6B7A72]">{m.frequency}</span>
+                          <span className="text-[10px] text-[#6B7A72]/40">·</span>
+                          <span className="text-[10px] text-[#6B7A72]">{m.mechanism}</span>
+                        </div>
+                      )}
+                    </div>
+                  </button>
+                )
+              })}
+
+              {/* Compounded semaglutide warning */}
+              {RESTRICTED.map(r => (
+                <div key={r.id} className="bg-[#FFF8F0] border border-[#C4742B]/15 rounded-3xl p-4">
+                  <div className="flex items-start gap-3">
+                    <AlertTriangle className="w-4 h-4 text-[#C4742B] mt-0.5 shrink-0" />
+                    <div>
+                      <p className="text-sm font-semibold text-[#C4742B]">{r.label}</p>
+                      <p className="text-xs text-[#8B7355] mt-1 leading-relaxed">{r.notes}</p>
+                      <button onClick={() => { setMedication(r.label); setDose(''); setCustomDose('') }}
+                        className={`mt-2 text-[10px] font-semibold cursor-pointer transition-colors ${medication === r.label ? 'text-[#C4742B]' : 'text-[#C4742B]/60 hover:text-[#C4742B]'}`}>
+                        {medication === r.label ? '(Selected — proceed with caution)' : 'I\'m currently using this'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
               ))}
+
+              {/* Coming soon */}
+              {COMING_SOON.length > 0 && (
+                <ComingSoonSection items={COMING_SOON} />
+              )}
             </div>
           )}
 
           {/* STEP 3: Dosage */}
-          {step === 3 && (
-            <div className="space-y-3">
-              <p className="text-xs text-[#6B7A72] mb-2">{medication} doses (mg)</p>
-              {DOSES[medication]?.length > 0 && (
-                <div className="flex flex-wrap gap-2">
-                  {DOSES[medication].map(d => (
-                    <button key={d} onClick={() => { setDose(d); setCustomDose('') }}
-                      className={`px-5 py-3 rounded-3xl border-2 text-sm font-semibold cursor-pointer transition-all ${dose === d ? 'border-[#1F4B32] bg-[#EAF2EB] text-[#1F4B32] shadow-[0_4px_24px_-8px_rgba(31,75,50,0.08)]' : 'border-[#EAF2EB] bg-white text-[#0D1F16] hover:border-[#6B7A72]/30'}`}>
-                      {d}<span className="text-xs font-normal text-[#6B7A72] ml-0.5">mg</span>
-                    </button>
-                  ))}
-                </div>
-              )}
-              <div>
-                <p className="text-xs text-[#6B7A72] mb-1.5">{DOSES[medication]?.length > 0 ? 'Or enter custom dose' : 'Enter your dose'}</p>
-                <div className="flex items-center gap-2">
-                  <input type="number" autoComplete="off" value={customDose} onChange={e => { setCustomDose(e.target.value); setDose('custom') }}
-                    placeholder="0.0" step="0.1"
-                    className="flex-1 px-4 py-3 rounded-2xl border-2 border-[#EAF2EB] text-sm text-[#0D1F16] outline-none focus:border-[#1F4B32] placeholder:text-[#6B7A72]/40" />
-                  <span className="text-sm text-[#6B7A72] font-medium">mg</span>
+          {step === 3 && (() => {
+            const medInfo = [...MEDICATIONS, OTHER_MED].find(m => m.label === medication)
+            const doses = medInfo?.doses || []
+            const medRecord = findMedicationByLabel(medication)
+            return (
+              <div className="space-y-3">
+                <p className="text-xs text-[#6B7A72] mb-2">{medication} doses (mg)</p>
+                {medRecord?.notes && (
+                  <div className="bg-[#F5F8F3] rounded-2xl p-3 text-xs text-[#6B7A72] leading-relaxed">
+                    {medRecord.notes}
+                  </div>
+                )}
+                {doses.length > 0 && (
+                  <div className="flex flex-wrap gap-2">
+                    {doses.map(d => (
+                      <button key={d} onClick={() => { setDose(d); setCustomDose('') }}
+                        className={`px-5 py-3 rounded-3xl border-2 text-sm font-semibold cursor-pointer transition-all ${dose === d ? 'border-[#1F4B32] bg-[#EAF2EB] text-[#1F4B32] shadow-[0_4px_24px_-8px_rgba(31,75,50,0.08)]' : 'border-[#EAF2EB] bg-white text-[#0D1F16] hover:border-[#6B7A72]/30'}`}>
+                        {d}<span className="text-xs font-normal text-[#6B7A72] ml-0.5">mg</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                <div>
+                  <p className="text-xs text-[#6B7A72] mb-1.5">{doses.length > 0 ? 'Or enter custom dose' : 'Enter your dose'}</p>
+                  <div className="flex items-center gap-2">
+                    <input type="number" autoComplete="off" value={customDose} onChange={e => { setCustomDose(e.target.value); setDose('custom') }}
+                      placeholder="0.0" step="0.1"
+                      className="flex-1 px-4 py-3 rounded-2xl border-2 border-[#EAF2EB] text-sm text-[#0D1F16] outline-none focus:border-[#1F4B32] placeholder:text-[#6B7A72]/40" />
+                    <span className="text-sm text-[#6B7A72] font-medium">mg</span>
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
+            )
+          })()}
 
           {/* STEP 4: Frequency */}
           {step === 4 && (
@@ -367,6 +411,40 @@ export default function Onboarding() {
           )}
         </div>
       </div>
+    </div>
+  )
+}
+
+function ComingSoonSection({ items }: { items: { id: string; label: string; mechanism: string; weightLossPct: number; notes?: string }[] }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="border-2 border-dashed border-[#EAF2EB] rounded-3xl overflow-hidden">
+      <button onClick={() => setOpen(!open)}
+        className="w-full flex items-center justify-between px-4 py-3.5 cursor-pointer hover:bg-[#F5F8F3]/50 transition-colors">
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-[#6B7A72] font-medium">Coming soon</span>
+          <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-[#EAF2EB] text-[#6B7A72]">{items.length}</span>
+        </div>
+        {open ? <ChevronUp className="w-4 h-4 text-[#6B7A72]" /> : <ChevronDown className="w-4 h-4 text-[#6B7A72]" />}
+      </button>
+      {open && (
+        <div className="px-4 pb-4 space-y-3">
+          {items.map(item => (
+            <div key={item.id} className="bg-[#F5F8F3] rounded-2xl p-4">
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-sm font-semibold text-[#0D1F16]">{item.label}</span>
+                <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-[#EAF2EB] text-[#6B7A72]">{item.mechanism}</span>
+              </div>
+              <p className="text-xs text-[#6B7A72]">~{item.weightLossPct}% avg weight loss in trials</p>
+              {item.notes && <p className="text-[10px] text-[#6B7A72]/80 mt-1.5 leading-relaxed">{item.notes}</p>}
+              <button className="mt-2 flex items-center gap-1.5 text-[10px] font-semibold text-[#1F4B32] cursor-pointer hover:text-[#2D6B45] transition-colors">
+                <Bell className="w-3 h-3" />
+                Notify me when available
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }

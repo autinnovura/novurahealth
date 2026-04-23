@@ -4,88 +4,28 @@ import { useState, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, ResponsiveContainer, ReferenceLine } from 'recharts'
 import { Info, Clock, Syringe, Activity } from 'lucide-react'
+import { findMedicationByLabel } from '../lib/medications'
 
 /*
- * PHARMACOKINETIC DATA — sourced from FDA prescribing labels and published clinical studies
+ * PHARMACOKINETIC MODEL
  *
- * Sources:
- * - Semaglutide: FDA Ozempic/Wegovy labels; Clin Pharmacokinet 2017;56(11):1391-1401
- * - Tirzepatide: FDA Mounjaro/Zepbound labels; CPT Pharmacometrics Syst Pharmacol 2024;13:e13099
- * - Liraglutide: FDA Saxenda label
- * - Dulaglutide: FDA Trulicity label
+ * One-compartment with first-order absorption and elimination (Bateman equation):
+ *   C(t) = (dose * ka / (ka - ke)) * (e^(-ke*t) - e^(-ka*t))
  *
- * Model: One-compartment with first-order absorption and elimination
- * C(t) = (dose * ka / (ka - ke)) * (e^(-ke*t) - e^(-ka*t))
- * For multi-dose: superposition of individual dose curves
+ * Where:
+ *   ka = ln(2) / (tmax / 3)   — absorption rate constant
+ *   ke = ln(2) / half_life    — elimination rate constant
+ *
+ * Multi-dose steady-state is handled by superposition: sum contributions
+ * from all past doses within 5 half-lives.
+ *
+ * Y-axis represents relative accumulated dose in the system (mg equivalent),
+ * NOT actual plasma concentration (which would be ng/mL and require volume
+ * of distribution data we don't have for a consumer app).
+ *
+ * Sources: FDA prescribing labels; Clin Pharmacokinet 2017;56(11):1391-1401;
+ * CPT Pharmacometrics Syst Pharmacol 2024;13:e13099
  */
-
-interface PKProfile {
-  name: string
-  halfLifeHours: number
-  tmaxHours: number
-  absorptionHalfLife: number
-  dosingIntervalHours: number
-  doses: { label: string; mg: number }[]
-  color: string
-  source: string
-}
-
-const PK_DATA: Record<string, PKProfile> = {
-  'Ozempic': {
-    name: 'Semaglutide (Ozempic)',
-    halfLifeHours: 168, tmaxHours: 36, absorptionHalfLife: 12, dosingIntervalHours: 168,
-    doses: [{ label: '0.25 mg', mg: 0.25 }, { label: '0.5 mg', mg: 0.5 }, { label: '1 mg', mg: 1.0 }, { label: '2 mg', mg: 2.0 }],
-    color: '#1F4B32', source: 'FDA Ozempic label; Clin Pharmacokinet 2017;56(11):1391-1401',
-  },
-  'Wegovy': {
-    name: 'Semaglutide (Wegovy)',
-    halfLifeHours: 168, tmaxHours: 36, absorptionHalfLife: 12, dosingIntervalHours: 168,
-    doses: [{ label: '0.25 mg', mg: 0.25 }, { label: '0.5 mg', mg: 0.5 }, { label: '1 mg', mg: 1.0 }, { label: '1.7 mg', mg: 1.7 }, { label: '2.4 mg', mg: 2.4 }],
-    color: '#1F4B32', source: 'FDA Wegovy label; STEP 1 (NEJM 2021)',
-  },
-  'Semaglutide (Ozempic)': {
-    name: 'Semaglutide (Ozempic)',
-    halfLifeHours: 168, tmaxHours: 36, absorptionHalfLife: 12, dosingIntervalHours: 168,
-    doses: [{ label: '0.25 mg', mg: 0.25 }, { label: '0.5 mg', mg: 0.5 }, { label: '1 mg', mg: 1.0 }, { label: '2 mg', mg: 2.0 }],
-    color: '#1F4B32', source: 'FDA Ozempic label',
-  },
-  'Mounjaro': {
-    name: 'Tirzepatide (Mounjaro)',
-    halfLifeHours: 120, tmaxHours: 24, absorptionHalfLife: 8, dosingIntervalHours: 168,
-    doses: [{ label: '2.5 mg', mg: 2.5 }, { label: '5 mg', mg: 5.0 }, { label: '7.5 mg', mg: 7.5 }, { label: '10 mg', mg: 10.0 }, { label: '12.5 mg', mg: 12.5 }, { label: '15 mg', mg: 15.0 }],
-    color: '#4A90D9', source: 'FDA Mounjaro label; CPT Pharmacometrics 2024;13:e13099',
-  },
-  'Zepbound': {
-    name: 'Tirzepatide (Zepbound)',
-    halfLifeHours: 120, tmaxHours: 24, absorptionHalfLife: 8, dosingIntervalHours: 168,
-    doses: [{ label: '2.5 mg', mg: 2.5 }, { label: '5 mg', mg: 5.0 }, { label: '7.5 mg', mg: 7.5 }, { label: '10 mg', mg: 10.0 }, { label: '12.5 mg', mg: 12.5 }, { label: '15 mg', mg: 15.0 }],
-    color: '#4A90D9', source: 'FDA Zepbound label; SURMOUNT-1 (NEJM 2022)',
-  },
-  'Saxenda': {
-    name: 'Liraglutide (Saxenda)',
-    halfLifeHours: 13, tmaxHours: 11, absorptionHalfLife: 3, dosingIntervalHours: 24,
-    doses: [{ label: '0.6 mg', mg: 0.6 }, { label: '1.2 mg', mg: 1.2 }, { label: '1.8 mg', mg: 1.8 }, { label: '2.4 mg', mg: 2.4 }, { label: '3.0 mg', mg: 3.0 }],
-    color: '#C4742B', source: 'FDA Saxenda label',
-  },
-  'Trulicity': {
-    name: 'Dulaglutide (Trulicity)',
-    halfLifeHours: 120, tmaxHours: 48, absorptionHalfLife: 16, dosingIntervalHours: 168,
-    doses: [{ label: '0.75 mg', mg: 0.75 }, { label: '1.5 mg', mg: 1.5 }, { label: '3 mg', mg: 3.0 }, { label: '4.5 mg', mg: 4.5 }],
-    color: '#7B5EA7', source: 'FDA Trulicity label',
-  },
-  'Rybelsus': {
-    name: 'Semaglutide oral (Rybelsus)',
-    halfLifeHours: 168, tmaxHours: 1.5, absorptionHalfLife: 0.5, dosingIntervalHours: 24,
-    doses: [{ label: '3 mg', mg: 3.0 }, { label: '7 mg', mg: 7.0 }, { label: '14 mg', mg: 14.0 }],
-    color: '#1F4B32', source: 'FDA Rybelsus label',
-  },
-  'Other': {
-    name: 'GLP-1 (Generic)',
-    halfLifeHours: 168, tmaxHours: 36, absorptionHalfLife: 12, dosingIntervalHours: 168,
-    doses: [{ label: '0.25 mg', mg: 0.25 }, { label: '0.5 mg', mg: 0.5 }, { label: '1 mg', mg: 1.0 }, { label: '2 mg', mg: 2.0 }],
-    color: '#1F4B32', source: 'Estimated based on semaglutide PK profile',
-  },
-}
 
 interface MedicationLog {
   logged_at: string
@@ -103,21 +43,33 @@ export default function MedicationLevelChart({ medication, dose, injectionLogs }
   const [timeRange, setTimeRange] = useState<'week' | 'month' | '90days'>('week')
   const [showInfoSheet, setShowInfoSheet] = useState(false)
 
-  const pk = PK_DATA[medication] || PK_DATA['Other']
-  const ke = Math.LN2 / pk.halfLifeHours
-  const ka = Math.LN2 / pk.absorptionHalfLife
+  const med = findMedicationByLabel(medication)
 
+  const halfLifeHours = med?.half_life_hours ?? 165
+  const tmaxHours = med?.absorption_tmax_hours ?? 72
+  const dosingIntervalHours = med?.frequency === 'daily' ? 24 : 168
+  const displayName = med
+    ? `${med.generic_name} (${med.brand_names[0]})`
+    : medication
+  const source = med?.fda_approved
+    ? `FDA ${med.brand_names[0]} label`
+    : med?.notes ?? 'Estimated'
+  const mechanism = med?.mechanism ?? 'GLP-1'
+
+  const ke = Math.LN2 / halfLifeHours
+  const ka = Math.LN2 / (tmaxHours / 3)
+
+  const defaultDoseMg = med
+    ? parseFloat(med.available_doses[0].replace('mg', '')) || 0.25
+    : 0.25
   const currentDoseMg = dose
-    ? parseFloat(dose.replace(/[^0-9.]/g, '')) || pk.doses[0].mg
-    : pk.doses[0].mg
+    ? parseFloat(dose.replace(/[^0-9.]/g, '')) || defaultDoseMg
+    : defaultDoseMg
 
-  // NOTE: Uses the full one-compartment PK model with first-order absorption,
-  // NOT the simplified dose*(1-exp(-ln2*t/t½)) formula. This is more accurate
-  // because it models the absorption phase (ka) separately from elimination (ke).
-  // Multi-dose steady-state is handled by superposition in chartData.
-  // @review — confirm this is the desired model vs the simplified version.
+  // Bateman equation for single-dose concentration
   function singleDoseConcentration(t: number, doseMg: number): number {
     if (t < 0) return 0
+    if (Math.abs(ka - ke) < 0.001) return 0
     const C = (doseMg * ka / (ka - ke)) * (Math.exp(-ke * t) - Math.exp(-ka * t))
     return Math.max(0, C)
   }
@@ -126,6 +78,8 @@ export default function MedicationLevelChart({ medication, dose, injectionLogs }
     const rangeHours = timeRange === 'week' ? 168 : timeRange === 'month' ? 720 : 2160
     const now = Date.now()
     const startTime = now - rangeHours * 3600 * 1000
+    // Include doses up to 5 half-lives before the start of the window
+    const cutoff = startTime - halfLifeHours * 5 * 3600 * 1000
 
     if (injectionLogs && injectionLogs.length > 0) {
       return injectionLogs
@@ -133,12 +87,12 @@ export default function MedicationLevelChart({ medication, dose, injectionLogs }
           time: new Date(log.logged_at).getTime(),
           dose: log.dose ? parseFloat(log.dose.replace(/[^0-9.]/g, '')) || currentDoseMg : currentDoseMg,
         }))
-        .filter(inj => inj.time >= startTime - 30 * 24 * 3600 * 1000)
+        .filter(inj => inj.time >= cutoff)
         .sort((a, b) => a.time - b.time)
     }
 
     return []
-  }, [injectionLogs, timeRange, currentDoseMg])
+  }, [injectionLogs, timeRange, currentDoseMg, halfLifeHours])
 
   const pastHours = timeRange === 'week' ? 168 : timeRange === 'month' ? 720 : 2160
   const futureHours = 168
@@ -174,9 +128,14 @@ export default function MedicationLevelChart({ medication, dose, injectionLogs }
   const nowIdx = chartData.findIndex(p => p.isFuture)
   const currentLevel = nowIdx > 0 ? chartData[nowIdx - 1].level : chartData[chartData.length - 1]?.level || 0
 
+  // Steady-state trough estimate: ~50-60% of peak for weekly, higher for daily
+  const steadyStateTroughPct = dosingIntervalHours >= 168
+    ? Math.round((1 - Math.pow(0.5, dosingIntervalHours / halfLifeHours)) * 100)
+    : Math.round((1 - Math.pow(0.5, dosingIntervalHours / halfLifeHours)) * 100)
+
   // Next shot countdown
   const lastInjTime = injectionTimes.length > 0 ? injectionTimes[injectionTimes.length - 1].time : null
-  const nextShotTime = lastInjTime ? lastInjTime + pk.dosingIntervalHours * 3600 * 1000 : null
+  const nextShotTime = lastInjTime ? lastInjTime + dosingIntervalHours * 3600 * 1000 : null
   const nextShotMs = nextShotTime ? nextShotTime - Date.now() : null
   const nextShotDays = nextShotMs !== null ? Math.floor(nextShotMs / 86400000) : null
   const nextShotHours = nextShotMs !== null ? Math.floor((nextShotMs % 86400000) / 3600000) : null
@@ -193,24 +152,14 @@ export default function MedicationLevelChart({ medication, dose, injectionLogs }
     ...futureData,
   ]
 
-  // Remove duplicate at bridge
   const deduped = mergedData.filter((p, i, arr) => i === 0 || p.time !== arr[i - 1].time)
 
-  // X-axis: show every other label
   const xTickInterval = timeRange === 'week' ? Math.floor(deduped.length / 8) : timeRange === 'month' ? Math.floor(deduped.length / 6) : Math.floor(deduped.length / 7)
 
-  // "Now" position as fraction
   const nowTime = pastHours
 
-  // Injection markers for the reference lines
-  const now = Date.now()
-  const startTime = now - pastHours * 3600 * 1000
-  const injectionMarkerTimes = injectionTimes
-    .filter(inj => inj.time >= startTime && inj.time <= now)
-    .map(inj => (inj.time - startTime) / (3600 * 1000))
-
   const nextShotCountdown = (() => {
-    if (nextShotMs === null || pk.dosingIntervalHours < 168) return null
+    if (nextShotMs === null || dosingIntervalHours < 168) return null
     if (nextShotMs <= 0) return 'Overdue'
     if (nextShotDays === 0) return `${nextShotHours}h`
     return `${nextShotDays}d ${nextShotHours}h`
@@ -224,12 +173,7 @@ export default function MedicationLevelChart({ medication, dose, injectionLogs }
 
   return (
     <div className="rounded-3xl bg-gradient-to-br from-white via-[#F5F8F3]/30 to-white border border-[#EAF2EB] shadow-[0_4px_24px_-8px_rgba(31,75,50,0.08)] overflow-hidden">
-      {/* Pulse keyframe */}
       <style>{`
-        @keyframes medPulse {
-          0%, 100% { box-shadow: 0 0 0 0 rgba(127,255,164,0.6); }
-          50% { box-shadow: 0 0 0 8px rgba(127,255,164,0); }
-        }
         @keyframes syringePulse {
           0%, 100% { opacity: 1; }
           50% { opacity: 0.5; }
@@ -243,7 +187,7 @@ export default function MedicationLevelChart({ medication, dose, injectionLogs }
             <h3 className="text-lg font-semibold text-[#0D1F16]" style={{ fontFamily: 'var(--font-fraunces)' }}>
               Estimated Medication Levels
             </h3>
-            <p className="text-xs text-[#6B7A72] mt-0.5">{pk.name}</p>
+            <p className="text-xs text-[#6B7A72] mt-0.5">{displayName}</p>
           </div>
           <div className="text-right flex items-start gap-1.5">
             <button
@@ -263,7 +207,7 @@ export default function MedicationLevelChart({ medication, dose, injectionLogs }
           </div>
         </div>
 
-        {/* Info sheet */}
+        {/* Info sheet — expanded educational content */}
         <AnimatePresence>
           {showInfoSheet && (
             <motion.div
@@ -273,10 +217,48 @@ export default function MedicationLevelChart({ medication, dose, injectionLogs }
               transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
               className="overflow-hidden"
             >
-              <div className="mt-3 p-3 rounded-2xl bg-[#F5F8F3] border border-[#EAF2EB] text-xs text-[#6B7A72] leading-relaxed">
-                This estimate models your medication accumulation based on a {Math.round(pk.halfLifeHours / 24)}-day half-life.
-                At steady state, your trough level stays around 60% of peak due to weekly dosing.
-                Individual responses vary — this is not a substitute for clinical monitoring.
+              <div className="mt-3 p-4 rounded-2xl bg-[#F5F8F3] border border-[#EAF2EB] text-xs text-[#6B7A72] leading-relaxed space-y-3">
+                <div>
+                  <p className="font-semibold text-[#0D1F16] text-[11px] mb-1">How this works</p>
+                  <p>
+                    This chart models your medication accumulation using standard pharmacokinetic
+                    principles — absorption, peak concentration, and elimination half-life.
+                  </p>
+                </div>
+                <div>
+                  <p className="font-semibold text-[#0D1F16] text-[11px] mb-1">Key concepts</p>
+                  <ul className="space-y-1.5 ml-3">
+                    <li className="relative before:content-['·'] before:absolute before:-left-2.5 before:text-[#1F4B32]">
+                      <strong>Half-life</strong> means 50% reduction, not elimination. After one half-life, 50% remains; after two, 25%; after five, it&apos;s effectively cleared.
+                    </li>
+                    <li className="relative before:content-['·'] before:absolute before:-left-2.5 before:text-[#1F4B32]">
+                      With {dosingIntervalHours >= 168 ? 'weekly' : 'daily'} dosing, your medication accumulates to &quot;steady state&quot; over {dosingIntervalHours >= 168 ? '4–5 weeks' : '3–5 days'} — your level never drops below ~{steadyStateTroughPct}% of peak once stable.
+                    </li>
+                    <li className="relative before:content-['·'] before:absolute before:-left-2.5 before:text-[#1F4B32]">
+                      The <strong>solid line</strong> is your actual projected level. The <strong>dashed line</strong> shows what would happen if you skipped your next dose.
+                    </li>
+                  </ul>
+                </div>
+                <div className="bg-white/60 rounded-xl p-3">
+                  <p className="font-semibold text-[#0D1F16] text-[11px] mb-1">{displayName} specifics</p>
+                  <div className="grid grid-cols-3 gap-2 text-[10px]">
+                    <div>
+                      <span className="text-[#6B7A72]">Half-life</span>
+                      <p className="font-semibold text-[#0D1F16]">{Math.round(halfLifeHours)}h / {Math.round(halfLifeHours / 24)}d</p>
+                    </div>
+                    <div>
+                      <span className="text-[#6B7A72]">Time to peak</span>
+                      <p className="font-semibold text-[#0D1F16]">{tmaxHours}h</p>
+                    </div>
+                    <div>
+                      <span className="text-[#6B7A72]">Mechanism</span>
+                      <p className="font-semibold text-[#0D1F16]">{mechanism}</p>
+                    </div>
+                  </div>
+                </div>
+                <p className="text-[9px] text-[#6B7A72]/70 italic">
+                  This is an educational model, not medical advice. Always consult your provider for clinical decisions.
+                </p>
               </div>
             </motion.div>
           )}
@@ -338,7 +320,6 @@ export default function MedicationLevelChart({ medication, dose, injectionLogs }
               tickCount={4}
               width={35}
             />
-            {/* "Now" vertical line */}
             <ReferenceLine
               x={deduped.find(p => p.time >= nowTime)?.dateLabel}
               stroke="#7FFFA4"
@@ -352,7 +333,6 @@ export default function MedicationLevelChart({ medication, dose, injectionLogs }
                 fontWeight: 600,
               }}
             />
-            {/* Past area fill */}
             <Area
               type="monotone"
               dataKey="pastLevel"
@@ -363,7 +343,6 @@ export default function MedicationLevelChart({ medication, dose, injectionLogs }
               dot={false}
               activeDot={{ r: 4, fill: '#fff', stroke: '#1F4B32', strokeWidth: 2 }}
             />
-            {/* Future dashed */}
             <Area
               type="monotone"
               dataKey="futureLevel"
@@ -398,7 +377,7 @@ export default function MedicationLevelChart({ medication, dose, injectionLogs }
           </div>
           <p className="text-[9px] font-semibold text-[#6B7A72] uppercase tracking-wider">Half-life</p>
           <p className="text-sm font-bold tabular-nums text-[#0D1F16]" style={{ fontVariantNumeric: 'tabular-nums' }}>
-            {Math.round(pk.halfLifeHours / 24)}d
+            {Math.round(halfLifeHours / 24)}d
           </p>
         </div>
         <div className="bg-[#F5F8F3] rounded-2xl p-3 text-center">
@@ -412,8 +391,8 @@ export default function MedicationLevelChart({ medication, dose, injectionLogs }
         </div>
       </div>
 
-      {/* Next shot pill */}
-      {nextShotCountdown !== null && pk.dosingIntervalHours >= 168 && (
+      {/* Next shot pill — only for weekly medications */}
+      {nextShotCountdown !== null && dosingIntervalHours >= 168 && (
         <div className="px-5 pb-4">
           <div className="flex items-center gap-3 bg-[#7FFFA4]/10 rounded-2xl px-4 py-3">
             <div
@@ -440,7 +419,7 @@ export default function MedicationLevelChart({ medication, dose, injectionLogs }
       {/* Disclaimer */}
       <div className="px-5 py-2.5 bg-[#F5F8F3]/60 border-t border-[#EAF2EB]">
         <p className="text-[9px] text-[#6B7A72]/80 leading-relaxed">
-          Estimated levels based on published pharmacokinetic data ({pk.source}). Individual responses vary. Not a substitute for clinical monitoring.
+          Estimated levels based on published pharmacokinetic data ({source}). Individual responses vary. Not a substitute for clinical monitoring.
         </p>
       </div>
     </div>

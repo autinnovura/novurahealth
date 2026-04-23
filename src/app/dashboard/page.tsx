@@ -14,6 +14,7 @@ import {
   Flame, Sparkles, TrendingUp, MessageCircle
 } from 'lucide-react'
 import BottomNav from '../components/BottomNav'
+import { getDosesForBrand, findMedicationByLabel } from '../lib/medications'
 
 // ── Types ──────────────────────────────────────────────
 interface Profile { name: string; medication: string; dose: string; start_date: string; current_weight: string; goal_weight: string; primary_goal: string; biggest_challenge: string; exercise_level: string; first_run_complete?: boolean | null; protein_target_g?: number | null; water_target_oz?: number | null; injection_day?: string | null; injection_time?: string | null }
@@ -32,21 +33,11 @@ const WATER_AMOUNTS = [8, 16, 24, 32]
 const EXERCISE_TYPES = ['Walking', 'Running', 'Weight training', 'Yoga', 'Swimming', 'Cycling', 'HIIT', 'Stretching', 'Other']
 const MOOD_LABELS = ['Rough', 'Low', 'Okay', 'Good', 'Great']
 const ENERGY_LABELS = ['Exhausted', 'Low', 'Moderate', 'High', 'Energized']
-const MEDICATION_DOSES: Record<string, number[]> = {
-  'Ozempic': [0.25, 0.5, 1.0, 2.0],
-  'Semaglutide (Ozempic)': [0.25, 0.5, 1.0, 2.0],
-  'Wegovy': [0.25, 0.5, 1.0, 1.7, 2.4],
-  'Semaglutide (Wegovy)': [0.25, 0.5, 1.0, 1.7, 2.4],
-  'Mounjaro': [2.5, 5, 7.5, 10, 12.5, 15],
-  'Tirzepatide (Mounjaro)': [2.5, 5, 7.5, 10, 12.5, 15],
-  'Zepbound': [2.5, 5, 7.5, 10, 12.5, 15],
-  'Tirzepatide (Zepbound)': [2.5, 5, 7.5, 10, 12.5, 15],
-  'Saxenda': [0.6, 1.2, 1.8, 2.4, 3.0],
-  'Liraglutide (Saxenda)': [0.6, 1.2, 1.8, 2.4, 3.0],
-  'Trulicity': [0.75, 1.5, 3.0, 4.5],
-  'Dulaglutide (Trulicity)': [0.75, 1.5, 3.0, 4.5],
-  'Rybelsus': [3, 7, 14],
-  'Semaglutide oral (Rybelsus)': [3, 7, 14],
+// Derive dose options from centralized medication library
+function getMedicationDoses(medName: string): number[] {
+  const doses = getDosesForBrand(medName)
+  if (doses.length > 0) return doses.map(d => parseFloat(d))
+  return [0.25, 0.5, 1.0, 2.0] // fallback for unknown medications
 }
 
 // ── Helpers ────────────────────────────────────────────
@@ -1161,7 +1152,7 @@ export default function Dashboard() {
             <div>
               <p className="text-[10px] font-semibold text-[#6B7A72] uppercase tracking-wider mb-2">Dose</p>
               <div className="flex flex-wrap gap-1.5">
-                {(MEDICATION_DOSES[profile?.medication || ''] || [0.25, 0.5, 1.0, 2.0]).map(d => (
+                {getMedicationDoses(profile?.medication || '').map((d: number) => (
                   <button key={d} onClick={() => { setMedDose(`${d}mg`); setCustomDose('') }}
                     className={`text-xs px-3.5 py-2.5 rounded-2xl border cursor-pointer transition-all duration-300 ${medDose === `${d}mg` ? 'border-[#1F4B32] bg-[#EAF2EB] text-[#1F4B32] font-semibold' : 'border-[#EAF2EB] text-[#6B7A72]'}`}>{d} mg</button>
                 ))}

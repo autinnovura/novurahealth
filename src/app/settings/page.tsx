@@ -5,7 +5,8 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '../lib/supabase'
 import DataImport from '../components/DataImport'
 import BottomNav from '../components/BottomNav'
-import { ArrowLeft, ChevronRight, Download, Shield, AlertTriangle, User, Lock, Database } from 'lucide-react'
+import { ArrowLeft, ChevronRight, Download, Shield, AlertTriangle, User, Lock, Database, Syringe, Pill } from 'lucide-react'
+import { getMedicationChoices, findMedicationByLabel } from '../lib/medications'
 
 interface Profile {
   name: string; medication: string; dose: string; start_date: string
@@ -15,7 +16,8 @@ interface Profile {
   injection_day?: string | null; injection_time?: string | null
 }
 
-const MEDICATIONS = ['Semaglutide (Ozempic)', 'Semaglutide (Wegovy)', 'Tirzepatide (Mounjaro)', 'Tirzepatide (Zepbound)', 'Liraglutide (Saxenda)', 'Dulaglutide (Trulicity)', 'Other']
+const { available: MED_CHOICES } = getMedicationChoices()
+const MEDICATIONS = [...MED_CHOICES.map(m => m.label), 'Other']
 const GOALS = ['Lose weight', 'Manage blood sugar', 'Reduce appetite', 'Improve health markers', 'Other']
 const EXERCISE_LEVELS = ['Sedentary', 'Light (1-2x/week)', 'Moderate (3-4x/week)', 'Active (5+/week)']
 const DAYS_OF_WEEK = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
@@ -216,11 +218,22 @@ export default function Settings() {
             <div>
               <label className="text-[10px] font-semibold text-[#6B7A72] uppercase tracking-wider">Current Medication</label>
               <div className="flex flex-wrap gap-1.5 mt-2">
-                {MEDICATIONS.map(m => (
-                  <button key={m} onClick={() => setMedication(m)}
-                    className={`text-xs px-3 py-1.5 rounded-full border cursor-pointer transition-all duration-300 ${medication === m ? 'border-[#1F4B32] bg-[#EAF2EB] text-[#1F4B32] font-semibold' : 'border-[#EAF2EB] text-[#6B7A72]'}`}>{m}</button>
-                ))}
+                {MEDICATIONS.map(m => {
+                  const medInfo = MED_CHOICES.find(c => c.label === m)
+                  const RouteIcon = medInfo?.route === 'oral' ? Pill : Syringe
+                  return (
+                    <button key={m} onClick={() => setMedication(m)}
+                      className={`text-xs px-3 py-1.5 rounded-full border cursor-pointer transition-all duration-300 flex items-center gap-1.5 ${medication === m ? 'border-[#1F4B32] bg-[#EAF2EB] text-[#1F4B32] font-semibold' : 'border-[#EAF2EB] text-[#6B7A72]'}`}>
+                      {medInfo && <RouteIcon className="w-3 h-3" />}
+                      {m}
+                      {medInfo?.isNew && <span className="text-[8px] font-bold px-1 py-0.5 rounded bg-[#7FFFA4]/20 text-[#1F4B32]">New</span>}
+                    </button>
+                  )
+                })}
               </div>
+              {findMedicationByLabel(medication)?.notes && (
+                <p className="text-[10px] text-[#6B7A72] mt-2 leading-relaxed">{findMedicationByLabel(medication)!.notes}</p>
+              )}
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
