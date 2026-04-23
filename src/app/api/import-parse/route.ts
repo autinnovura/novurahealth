@@ -3,6 +3,8 @@ import { createClient } from '@supabase/supabase-js'
 import { getAuthedUser, unauthorized } from '../../lib/auth'
 import { importLimiter, checkRateLimit } from '../../lib/rate-limit'
 
+const MAX_FILE_SIZE = 10 * 1024 * 1024   // 10MB per file
+
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || '',
   process.env.SUPABASE_SERVICE_ROLE_KEY || ''
@@ -25,6 +27,13 @@ export async function POST(req: NextRequest) {
 
     if (!file) {
       return NextResponse.json({ error: 'Missing image' }, { status: 400 })
+    }
+
+    if (file.size > MAX_FILE_SIZE) {
+      return NextResponse.json(
+        { error: 'File exceeds 10MB limit.' },
+        { status: 413 }
+      )
     }
 
     // Convert file to base64

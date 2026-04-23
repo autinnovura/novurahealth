@@ -11,6 +11,8 @@ export const maxDuration = 300
 const MODEL = 'claude-sonnet-4-5'
 const MAX_TOKENS = 16000
 const MAX_FILES = 10
+const MAX_FILE_SIZE = 10 * 1024 * 1024   // 10MB per file
+const MAX_TOTAL_SIZE = 25 * 1024 * 1024  // 25MB total per request
 const MAX_TEXT_CHARS = 80000
 const BATCH_SIZE = 500
 
@@ -71,6 +73,22 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         { error: `Max ${MAX_FILES} files per upload. You sent ${files.length}.` },
         { status: 400 }
+      )
+    }
+
+    for (const file of files) {
+      if (file.size > MAX_FILE_SIZE) {
+        return NextResponse.json(
+          { error: `File "${file.name}" exceeds 10MB limit.` },
+          { status: 413 }
+        )
+      }
+    }
+    const totalSize = files.reduce((sum, f) => sum + f.size, 0)
+    if (totalSize > MAX_TOTAL_SIZE) {
+      return NextResponse.json(
+        { error: 'Total upload size exceeds 25MB limit.' },
+        { status: 413 }
       )
     }
 
