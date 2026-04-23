@@ -94,7 +94,7 @@ export default function Settings() {
   async function saveProfile() {
     if (!userId) return
     setSaving(true)
-    await supabase.from('profiles').update({
+    const { error } = await supabase.from('profiles').update({
       name, medication, dose, start_date: startDate,
       current_weight: currentWeight, goal_weight: goalWeight,
       primary_goal: primaryGoal, exercise_level: exerciseLevel,
@@ -103,6 +103,11 @@ export default function Settings() {
       injection_day: injectionDay || null,
       injection_time: injectionTime || null,
     }).eq('id', userId)
+    if (error) {
+      toast.error('Failed to save: ' + error.message)
+      setSaving(false)
+      return
+    }
     setSaving(false)
     setSaved(true)
     setTimeout(() => setSaved(false), 2000)

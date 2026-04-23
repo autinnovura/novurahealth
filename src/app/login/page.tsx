@@ -24,6 +24,7 @@ export default function Login() {
     e.preventDefault()
     setError('')
     if (!email.trim() || !password.trim()) { setError('Please fill in all fields'); return }
+    if (isSignUp && password.length < 6) { setError('Password must be at least 6 characters'); return }
     setLoading(true)
 
     if (isSignUp) {

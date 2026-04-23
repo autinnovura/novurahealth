@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '../lib/supabase'
 import { getMedicationChoices, findMedicationByLabel } from '../lib/medications'
-import { Syringe, Pill, ChevronDown, ChevronUp, AlertTriangle, Bell } from 'lucide-react'
+import { Syringe, Pill, ChevronDown, ChevronUp, AlertTriangle } from 'lucide-react'
 
 const { available: MEDICATIONS, comingSoon: COMING_SOON, restricted: RESTRICTED } = getMedicationChoices()
 
@@ -437,10 +437,6 @@ function ComingSoonSection({ items }: { items: { id: string; label: string; mech
               </div>
               <p className="text-xs text-[#6B7A72]">~{item.weightLossPct}% avg weight loss in trials</p>
               {item.notes && <p className="text-[10px] text-[#6B7A72]/80 mt-1.5 leading-relaxed">{item.notes}</p>}
-              <button className="mt-2 flex items-center gap-1.5 text-[10px] font-semibold text-[#1F4B32] cursor-pointer hover:text-[#2D6B45] transition-colors">
-                <Bell className="w-3 h-3" />
-                Notify me when available
-              </button>
             </div>
           ))}
         </div>

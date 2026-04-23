@@ -161,7 +161,7 @@ export async function POST(req: NextRequest) {
         {
           success: false,
           message: `AI extraction failed (${claudeRes.status}). Please try again.`,
-          debug: errText.slice(0, 500),
+          ...(process.env.NODE_ENV === 'development' ? { debug: errText.slice(0, 500) } : {}),
         },
         { status: 500 }
       )
@@ -179,7 +179,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({
         success: false,
         message: 'AI returned an empty response. Try again.',
-        debug: JSON.stringify(result).slice(0, 500),
+        ...(process.env.NODE_ENV === 'development' ? { debug: JSON.stringify(result).slice(0, 500) } : {}),
       })
     }
 
@@ -189,7 +189,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({
         success: false,
         message: "AI response wasn't valid JSON. Try again or use a cleaner file.",
-        debug: responseText.slice(0, 500),
+        ...(process.env.NODE_ENV === 'development' ? { debug: responseText.slice(0, 500) } : {}),
       })
     }
 
@@ -294,7 +294,7 @@ export async function POST(req: NextRequest) {
       {
         success: false,
         message: 'Something went wrong processing your file.',
-        debug: error?.message,
+        ...(process.env.NODE_ENV === 'development' ? { debug: error?.message } : {}),
       },
       { status: 500 }
     )

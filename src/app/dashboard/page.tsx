@@ -239,7 +239,7 @@ export default function Dashboard() {
         supabase.from('water_logs').select('*').eq('user_id', user.id).gte('logged_at', today.toISOString()),
         supabase.from('checkin_logs').select('*').eq('user_id', user.id).order('logged_at', { ascending: false }).limit(7),
         supabase.from('exercise_logs').select('*').eq('user_id', user.id).order('logged_at', { ascending: false }).limit(10),
-        supabase.from('medication_logs').select('*').eq('user_id', user.id).order('logged_at', { ascending: true }),
+        supabase.from('medication_logs').select('*').eq('user_id', user.id).order('logged_at', { ascending: true }).limit(500),
       ])
 
       setMedLogs(meds.data || [])
@@ -269,7 +269,7 @@ export default function Dashboard() {
     if (!userId) return
     const today = startOfDay(new Date())
     const monthAgo = addDays(today, -30)
-    const [meds, weights, effects, todayFoods, monthFoods, water, exercises, medChart] = await Promise.all([
+    const [meds, weights, effects, todayFoods, monthFoods, water, exercises, medChart, checkins] = await Promise.all([
       supabase.from('medication_logs').select('*').eq('user_id', userId).order('logged_at', { ascending: false }).limit(20),
       supabase.from('weight_logs').select('*').eq('user_id', userId).order('logged_at', { ascending: false }).limit(30),
       supabase.from('side_effect_logs').select('*').eq('user_id', userId).order('logged_at', { ascending: false }).limit(10),
@@ -277,7 +277,8 @@ export default function Dashboard() {
       supabase.from('food_logs').select('*').eq('user_id', userId).gte('logged_at', monthAgo.toISOString()).order('logged_at', { ascending: true }),
       supabase.from('water_logs').select('*').eq('user_id', userId).gte('logged_at', today.toISOString()),
       supabase.from('exercise_logs').select('*').eq('user_id', userId).order('logged_at', { ascending: false }).limit(10),
-      supabase.from('medication_logs').select('*').eq('user_id', userId).order('logged_at', { ascending: true }),
+      supabase.from('medication_logs').select('*').eq('user_id', userId).order('logged_at', { ascending: true }).limit(500),
+      supabase.from('checkin_logs').select('*').eq('user_id', userId).order('logged_at', { ascending: false }).limit(7),
     ])
     setMedLogs(meds.data || [])
     setWeightLogs(weights.data || [])
@@ -287,6 +288,7 @@ export default function Dashboard() {
     setWaterLogs(water.data || [])
     setExerciseLogs(exercises.data || [])
     setMedChartLogs(medChart.data || [])
+    setCheckinLogs(checkins.data || [])
     setStreak(calculateStreak(monthFoods.data || []))
     fetchDateData(userId, selectedDate, nutritionView)
   }, [userId, calculateStreak, fetchDateData, selectedDate, nutritionView])
@@ -330,7 +332,7 @@ export default function Dashboard() {
           setProfile({ ...profile, dose: finalDose })
         }
         // Re-fetch chart logs so the chart updates immediately
-        const { data: updated } = await supabase.from('medication_logs').select('*').eq('user_id', userId).order('logged_at', { ascending: true })
+        const { data: updated } = await supabase.from('medication_logs').select('*').eq('user_id', userId).order('logged_at', { ascending: true }).limit(500)
         if (updated) setMedChartLogs(updated)
       }
       toast.success('Logged!')
