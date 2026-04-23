@@ -1,6 +1,7 @@
 'use client'
 
 import { usePathname } from 'next/navigation'
+import Link from 'next/link'
 import {
   Home, TrendingUp, MessageCircle, DollarSign, Settings,
 } from 'lucide-react'
@@ -21,11 +22,11 @@ export default function BottomNav() {
       {NAV_ITEMS.map(item => {
         const active = pathname === item.href
         return (
-          <a key={item.label} href={item.href} className={`flex flex-col items-center gap-1 transition-all duration-300 ${active ? 'text-[#1F4B32]' : 'text-[#6B7A72]/40 hover:text-[#6B7A72]'}`}>
+          <Link key={item.label} href={item.href} className={`flex flex-col items-center gap-1 transition-all duration-300 ${active ? 'text-[#1F4B32]' : 'text-[#6B7A72]/40 hover:text-[#6B7A72]'}`}>
             <item.icon className="w-5 h-5" strokeWidth={1.5} />
             <span className="text-[10px] font-medium">{item.label}</span>
             {active && <div className="w-1 h-1 rounded-full bg-[#7FFFA4] shadow-[0_0_6px_2px_rgba(127,255,164,0.4)]" />}
-          </a>
+          </Link>
         )
       })}
     </nav>

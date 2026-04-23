@@ -4,11 +4,10 @@ import { useState, useRef, useEffect } from 'react'
 
 interface VoiceInputProps {
   onResult: (text: string) => void
-  placeholder?: string
   className?: string
 }
 
-export default function VoiceInput({ onResult, placeholder = 'Tap mic to speak...', className = '' }: VoiceInputProps) {
+export default function VoiceInput({ onResult, className = '' }: VoiceInputProps) {
   const [listening, setListening] = useState(false)
   const [supported, setSupported] = useState(true)
   const [interim, setInterim] = useState('')

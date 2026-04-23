@@ -48,7 +48,7 @@ All values should be integers (grams for macros, total for calories). Be as accu
     console.error('Food lookup error:', error)
     return NextResponse.json(
       { calories: 0, protein: 0, carbs: 0, fat: 0, error: 'Could not estimate macros.' },
-      { status: 200 }
+      { status: 422 }
     )
   }
 }

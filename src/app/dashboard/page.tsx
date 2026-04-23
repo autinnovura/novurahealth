@@ -16,7 +16,7 @@ import {
 } from 'lucide-react'
 import BottomNav from '../components/BottomNav'
 import StreakCalendar from '../components/StreakCalendar'
-import { getDosesForBrand, findMedicationByLabel } from '../lib/medications'
+import { getDosesForBrand } from '../lib/medications'
 import { localDateKey } from '../lib/dates'
 
 // ── Types ──────────────────────────────────────────────
@@ -476,10 +476,7 @@ export default function Dashboard() {
   const nextSite = INJECTION_SITES[(siteIdx + 1) % INJECTION_SITES.length]
 
   // Today stats (for overview)
-  const todayCal = todayFoodLogs.reduce((s,f) => s+f.calories, 0)
   const todayP = todayFoodLogs.reduce((s,f) => s+f.protein, 0)
-  const todayC = todayFoodLogs.reduce((s,f) => s+f.carbs, 0)
-  const todayF = todayFoodLogs.reduce((s,f) => s+f.fat, 0)
   const todayWater = waterLogs.reduce((s,w) => s+w.amount_oz, 0)
   const proteinRem = proteinTarget ? Math.max(0, proteinTarget - todayP) : null
   const todayCheckin = checkinLogs.find(c => c.logged_at.startsWith(localDateKey(new Date())))
@@ -510,7 +507,6 @@ export default function Dashboard() {
     return count
   })()
 
-  const todayMeals = { breakfast: todayFoodLogs.filter(f => f.meal_type === 'breakfast'), lunch: todayFoodLogs.filter(f => f.meal_type === 'lunch'), dinner: todayFoodLogs.filter(f => f.meal_type === 'dinner'), snack: todayFoodLogs.filter(f => f.meal_type === 'snack') }
   const dateMeals = { breakfast: dateFoodLogs.filter(f => f.meal_type === 'breakfast'), lunch: dateFoodLogs.filter(f => f.meal_type === 'lunch'), dinner: dateFoodLogs.filter(f => f.meal_type === 'dinner'), snack: dateFoodLogs.filter(f => f.meal_type === 'snack') }
 
   function getProteinSuggestion(rem: number): string {
