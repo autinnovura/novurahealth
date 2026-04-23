@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { getAuthedUser, unauthorized } from '../../lib/auth'
+import { chatLimiter, checkRateLimit } from '../../lib/rate-limit'
 
 const client = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY!,
@@ -9,6 +10,11 @@ const client = new Anthropic({
 export async function POST(request: NextRequest) {
   const user = await getAuthedUser()
   if (!user) return unauthorized()
+
+  const { success: allowed } = await checkRateLimit(chatLimiter, user.id)
+  if (!allowed) {
+    return NextResponse.json({ error: 'Rate limit exceeded. Please slow down.' }, { status: 429 })
+  }
 
   try {
     const body = await request.json().catch(() => null)

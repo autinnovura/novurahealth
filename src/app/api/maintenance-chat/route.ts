@@ -1,9 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getAuthedUser, unauthorized } from '../../lib/auth'
+import { chatLimiter, checkRateLimit } from '../../lib/rate-limit'
 
 export async function POST(req: NextRequest) {
   const user = await getAuthedUser()
   if (!user) return unauthorized()
+
+  const { success: allowed } = await checkRateLimit(chatLimiter, user.id)
+  if (!allowed) {
+    return NextResponse.json({ error: 'Rate limit exceeded. Please slow down.' }, { status: 429 })
+  }
 
   const { message, profile, plan, recentCheckins, weightTrend } = await req.json()
 

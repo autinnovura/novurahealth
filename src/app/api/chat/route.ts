@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { getAuthedUser, unauthorized } from '../../lib/auth'
+import { chatLimiter, checkRateLimit } from '../../lib/rate-limit'
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || '',
@@ -174,6 +175,11 @@ ${tc.length > 0 ? `Latest tapering check-in: hunger ${tc[0].hunger}/5, cravings 
 export async function POST(req: NextRequest) {
   const user = await getAuthedUser()
   if (!user) return unauthorized()
+
+  const { success: allowed } = await checkRateLimit(chatLimiter, user.id)
+  if (!allowed) {
+    return NextResponse.json({ error: 'Rate limit exceeded. Please slow down.' }, { status: 429 })
+  }
 
   const { messages } = await req.json()
   if (!messages?.length) {

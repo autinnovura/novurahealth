@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getAuthedUser, unauthorized } from '../../lib/auth'
+import { chatLimiter, checkRateLimit } from '../../lib/rate-limit'
 
 const DRUG_PRICES: Record<string, { brand: number; generic: number | null; savings_card: string | null; max_savings: number | null }> = {
   'Ozempic': { brand: 950, generic: null, savings_card: 'Novo Nordisk Savings Card', max_savings: 150 },
@@ -13,6 +14,11 @@ const DRUG_PRICES: Record<string, { brand: number; generic: number | null; savin
 export async function POST(req: NextRequest) {
   const user = await getAuthedUser()
   if (!user) return unauthorized()
+
+  const { success: allowed } = await checkRateLimit(chatLimiter, user.id)
+  if (!allowed) {
+    return NextResponse.json({ error: 'Rate limit exceeded. Please slow down.' }, { status: 429 })
+  }
 
   const { message, profile, savingsProfile } = await req.json()
 

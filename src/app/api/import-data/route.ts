@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import * as XLSX from 'xlsx'
 import mammoth from 'mammoth'
 import { getAuthedUser, unauthorized } from '../../lib/auth'
+import { importLimiter, checkRateLimit } from '../../lib/rate-limit'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300
@@ -50,6 +51,11 @@ Rules:
 export async function POST(req: NextRequest) {
   const user = await getAuthedUser()
   if (!user) return unauthorized()
+
+  const { success: allowed } = await checkRateLimit(importLimiter, user.id)
+  if (!allowed) {
+    return NextResponse.json({ error: 'Rate limit exceeded. Please slow down.' }, { status: 429 })
+  }
 
   try {
     const formData = await req.formData()
