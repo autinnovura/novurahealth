@@ -2,7 +2,9 @@
 
 import { useState, useMemo, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, ResponsiveContainer, ReferenceLine } from 'recharts'
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, ResponsiveContainer, ReferenceLine, Tooltip } from 'recharts'
+import { format } from 'date-fns'
+import ChartTooltip from './ui/ChartTooltip'
 import { Info, Clock, Syringe, Activity } from 'lucide-react'
 import { findMedicationByLabel } from '../lib/medications'
 
@@ -104,9 +106,11 @@ export default function MedicationLevelChart({ medication, dose, injectionLogs }
 
   const chartData = useMemo(() => {
     const startTime = now - pastHours * 3600 * 1000
-    const points: { time: number; level: number; date: Date; isFuture: boolean; dateLabel: string }[] = []
+    const points: { time: number; level: number; date: Date; isFuture: boolean; dateLabel: string; percentOfPeak: number; status: string; isInjectionDay: boolean; dose: string }[] = []
     const step = totalHours / 200
 
+    // First pass: compute levels
+    const rawPoints: { time: number; level: number; date: Date; isFuture: boolean; dateLabel: string; pointTime: number }[] = []
     for (let h = 0; h <= totalHours; h += step) {
       const pointTime = startTime + h * 3600 * 1000
       let totalConcentration = 0
@@ -115,16 +119,55 @@ export default function MedicationLevelChart({ medication, dose, injectionLogs }
         totalConcentration += singleDoseConcentration(hoursSinceInjection, inj.dose)
       }
       const d = new Date(pointTime)
-      points.push({
+      rawPoints.push({
         time: h,
         level: Math.round(totalConcentration * 1000) / 1000,
         date: d,
         isFuture: h > pastHours,
         dateLabel: `${d.getMonth() + 1}/${d.getDate()}`,
+        pointTime,
+      })
+    }
+
+    const peakLevel = Math.max(...rawPoints.map(p => p.level), 0.01)
+
+    // Second pass: enrich with tooltip fields
+    for (let i = 0; i < rawPoints.length; i++) {
+      const p = rawPoints[i]
+      const prev = i > 0 ? rawPoints[i - 1] : null
+      const percentOfPeak = Math.round((p.level / peakLevel) * 100)
+
+      let status = 'Stable'
+      if (prev) {
+        const delta = p.level - prev.level
+        const threshold = peakLevel * 0.005
+        if (delta > threshold) status = 'Rising'
+        else if (delta < -threshold) status = 'Declining'
+        else if (percentOfPeak >= 95) status = 'Peak'
+        else status = 'Trough'
+      }
+
+      // Check if this point falls on an injection day
+      const dayStart = new Date(p.date)
+      dayStart.setHours(0, 0, 0, 0)
+      const dayEnd = new Date(dayStart)
+      dayEnd.setDate(dayEnd.getDate() + 1)
+      const matchedInj = injectionTimes.find(inj => inj.time >= dayStart.getTime() && inj.time < dayEnd.getTime())
+
+      points.push({
+        time: p.time,
+        level: p.level,
+        date: p.date,
+        isFuture: p.isFuture,
+        dateLabel: p.dateLabel,
+        percentOfPeak,
+        status,
+        isInjectionDay: !!matchedInj,
+        dose: matchedInj ? `${matchedInj.dose}mg` : `${currentDoseMg}mg`,
       })
     }
     return points
-  }, [injectionTimes, pastHours, totalHours, ke, ka, now])
+  }, [injectionTimes, pastHours, totalHours, ke, ka, now, currentDoseMg])
 
   const maxLevel = Math.max(...chartData.map(p => p.level), 0.01)
 
@@ -336,6 +379,33 @@ export default function MedicationLevelChart({ medication, dose, injectionLogs }
                 fontWeight: 600,
               }}
             />
+            <Tooltip
+              content={
+                <ChartTooltip>
+                  {(data) => (
+                    <>
+                      <div className="text-xs text-[#6B7A72] uppercase tracking-wider font-semibold mb-1">
+                        {data.date instanceof Date ? format(data.date, 'MMM d') : ''}
+                      </div>
+                      <div className="text-2xl font-bold tabular-nums text-[#1F4B32]">
+                        {(data.level as number).toFixed(2)}<span className="text-sm text-[#6B7A72] ml-1">mg</span>
+                      </div>
+                      <div className="text-xs text-[#6B7A72] mt-1">
+                        {data.percentOfPeak as number}% of peak &middot; {data.status as string}
+                      </div>
+                      {data.isInjectionDay && (
+                        <div className="mt-2 pt-2 border-t border-[#EAF2EB] text-xs flex items-center gap-1">
+                          <span>💉</span>
+                          <span className="font-semibold">{data.dose as string} injection</span>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </ChartTooltip>
+              }
+              cursor={{ stroke: '#7FFFA4', strokeWidth: 1, strokeDasharray: '3 3' }}
+              wrapperStyle={{ outline: 'none' }}
+            />
             <Area
               type="monotone"
               dataKey="pastLevel"
@@ -344,7 +414,7 @@ export default function MedicationLevelChart({ medication, dose, injectionLogs }
               fill="url(#medLevelGradient)"
               connectNulls={false}
               dot={false}
-              activeDot={{ r: 4, fill: '#fff', stroke: '#1F4B32', strokeWidth: 2 }}
+              activeDot={{ r: 6, fill: '#7FFFA4', stroke: '#1F4B32', strokeWidth: 2 }}
             />
             <Area
               type="monotone"

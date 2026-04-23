@@ -8,7 +8,9 @@ import FirstRunModal from '../components/FirstRunModal'
 import MedicationLevelChart from '../components/MedicationLevelChart'
 import LogEntryMenu from '../components/LogEntryMenu'
 import { motion } from 'framer-motion'
-import { AreaChart, Area, ResponsiveContainer, YAxis } from 'recharts'
+import { AreaChart, Area, ResponsiveContainer, YAxis, Tooltip } from 'recharts'
+import { format } from 'date-fns'
+import ChartTooltip from '../components/ui/ChartTooltip'
 import {
   Utensils, Syringe, Scale, Dumbbell, Stethoscope,
   Droplets, ChevronLeft, ChevronRight, Plus, LogOut,
@@ -540,7 +542,16 @@ export default function Dashboard() {
   const divisor = nutritionView === 'day' ? 1 : nutritionView === 'week' ? daysThisWeek : new Date(selectedDate.getFullYear(), selectedDate.getMonth() + 1, 0).getDate()
 
   // Weight sparkline data for Recharts
-  const sparklineData = [...weightLogs].sort((a, b) => new Date(a.logged_at).getTime() - new Date(b.logged_at).getTime()).map(w => ({ weight: w.weight }))
+  const sparklineData = (() => {
+    const sorted = [...weightLogs].sort((a, b) => new Date(a.logged_at).getTime() - new Date(b.logged_at).getTime())
+    const firstWeight = sorted[0]?.weight
+    return sorted.map((w, i) => ({
+      weight: w.weight,
+      date: w.logged_at,
+      changeFromPrev: i > 0 ? w.weight - sorted[i - 1].weight : undefined,
+      changeFromStart: firstWeight !== undefined ? w.weight - firstWeight : undefined,
+    }))
+  })()
 
   // Smart insight line
   const insightLine = (() => {
@@ -707,7 +718,39 @@ export default function Dashboard() {
                       </linearGradient>
                     </defs>
                     <YAxis hide domain={['dataMin - 2', 'dataMax + 2']} />
-                    <Area type="monotone" dataKey="weight" stroke="#1F4B32" strokeWidth={2} fill="url(#sparkGrad)" dot={false} />
+                    <Tooltip
+                      content={
+                        <ChartTooltip>
+                          {(data) => {
+                            const changeFromPrev = data.changeFromPrev as number | undefined
+                            const changeColor = changeFromPrev !== undefined && changeFromPrev < 0 ? 'text-[#1F4B32]' : changeFromPrev !== undefined && changeFromPrev > 0 ? 'text-red-600' : 'text-[#6B7A72]'
+                            return (
+                              <>
+                                <div className="text-xs text-[#6B7A72] uppercase tracking-wider font-semibold mb-1">
+                                  {data.date ? format(new Date(data.date as string), 'MMM d, yyyy') : ''}
+                                </div>
+                                <div className="text-2xl font-bold tabular-nums text-[#1F4B32]">
+                                  {data.weight as number}<span className="text-sm text-[#6B7A72] ml-1">lbs</span>
+                                </div>
+                                {changeFromPrev !== undefined && (
+                                  <div className={`text-xs font-semibold mt-1 ${changeColor}`}>
+                                    {changeFromPrev > 0 ? '+' : ''}{changeFromPrev.toFixed(1)} from last log
+                                  </div>
+                                )}
+                                {data.changeFromStart !== undefined && (
+                                  <div className="text-xs text-[#6B7A72] mt-0.5">
+                                    {(data.changeFromStart as number) > 0 ? '+' : ''}{(data.changeFromStart as number).toFixed(1)} total
+                                  </div>
+                                )}
+                              </>
+                            )
+                          }}
+                        </ChartTooltip>
+                      }
+                      cursor={{ stroke: '#7FFFA4', strokeWidth: 1, strokeDasharray: '3 3' }}
+                      wrapperStyle={{ outline: 'none' }}
+                    />
+                    <Area type="monotone" dataKey="weight" stroke="#1F4B32" strokeWidth={2} fill="url(#sparkGrad)" dot={false} activeDot={{ r: 6, fill: '#7FFFA4', stroke: '#1F4B32', strokeWidth: 2 }} />
                   </AreaChart>
                 </ResponsiveContainer>
               </div>
@@ -1070,7 +1113,39 @@ export default function Dashboard() {
                       </linearGradient>
                     </defs>
                     <YAxis hide domain={['dataMin - 2', 'dataMax + 2']} />
-                    <Area type="monotone" dataKey="weight" stroke="#1F4B32" strokeWidth={2} fill="url(#healthSparkGrad)" dot={false} />
+                    <Tooltip
+                      content={
+                        <ChartTooltip>
+                          {(data) => {
+                            const changeFromPrev = data.changeFromPrev as number | undefined
+                            const changeColor = changeFromPrev !== undefined && changeFromPrev < 0 ? 'text-[#1F4B32]' : changeFromPrev !== undefined && changeFromPrev > 0 ? 'text-red-600' : 'text-[#6B7A72]'
+                            return (
+                              <>
+                                <div className="text-xs text-[#6B7A72] uppercase tracking-wider font-semibold mb-1">
+                                  {data.date ? format(new Date(data.date as string), 'MMM d, yyyy') : ''}
+                                </div>
+                                <div className="text-2xl font-bold tabular-nums text-[#1F4B32]">
+                                  {data.weight as number}<span className="text-sm text-[#6B7A72] ml-1">lbs</span>
+                                </div>
+                                {changeFromPrev !== undefined && (
+                                  <div className={`text-xs font-semibold mt-1 ${changeColor}`}>
+                                    {changeFromPrev > 0 ? '+' : ''}{changeFromPrev.toFixed(1)} from last log
+                                  </div>
+                                )}
+                                {data.changeFromStart !== undefined && (
+                                  <div className="text-xs text-[#6B7A72] mt-0.5">
+                                    {(data.changeFromStart as number) > 0 ? '+' : ''}{(data.changeFromStart as number).toFixed(1)} total
+                                  </div>
+                                )}
+                              </>
+                            )
+                          }}
+                        </ChartTooltip>
+                      }
+                      cursor={{ stroke: '#7FFFA4', strokeWidth: 1, strokeDasharray: '3 3' }}
+                      wrapperStyle={{ outline: 'none' }}
+                    />
+                    <Area type="monotone" dataKey="weight" stroke="#1F4B32" strokeWidth={2} fill="url(#healthSparkGrad)" dot={false} activeDot={{ r: 6, fill: '#7FFFA4', stroke: '#1F4B32', strokeWidth: 2 }} />
                   </AreaChart>
                 </ResponsiveContainer>
               </div>
