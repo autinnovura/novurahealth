@@ -376,31 +376,46 @@ Max 1 question per response. Never more.
       'anthropic-version': '2023-06-01',
     }
 
-    // Initial Claude call with tools
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: apiHeaders,
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 1024,
-        system: systemPrompt,
-        tools,
-        messages: messages.slice(-20),
-      }),
-    })
+    // Tool-use loop: send message, execute any tool calls, repeat until text-only response
+    const MAX_ITERATIONS = 5
+    const conversationMessages = [...messages.slice(-20)]
+    let finalResponseText = ''
 
-    if (!res.ok) {
-      const errorBody = await res.text()
-      console.error('ANTHROPIC ERROR:', errorBody)
-      return NextResponse.json({ message: "Nova is temporarily unavailable. Please try again." })
-    }
+    for (let i = 0; i < MAX_ITERATIONS; i++) {
+      const res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: apiHeaders,
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: 1024,
+          system: systemPrompt,
+          tools,
+          messages: conversationMessages,
+        }),
+      })
 
-    let result = await res.json()
+      if (!res.ok) {
+        const errorBody = await res.text()
+        console.error('ANTHROPIC ERROR:', errorBody)
+        if (finalResponseText) return NextResponse.json({ message: finalResponseText })
+        return NextResponse.json({ message: "Nova is temporarily unavailable. Please try again." })
+      }
 
-    // Process tool calls in a loop until Claude gives a final text response
-    let conversationMessages = [...messages.slice(-20)]
+      const result = await res.json()
 
-    while (result.stop_reason === 'tool_use') {
+      // Add assistant response to conversation history
+      conversationMessages.push({ role: 'assistant', content: result.content })
+
+      // Collect any text from this iteration
+      const textBlocks = (result.content || []).filter((b: any) => b.type === 'text')
+      if (textBlocks.length > 0) {
+        finalResponseText = textBlocks.map((b: any) => b.text).join('\n').trim()
+      }
+
+      // If no tool use requested, we're done
+      if (result.stop_reason !== 'tool_use') break
+
+      // Execute tool calls and build tool_result message
       const toolUseBlocks = (result.content || []).filter((b: any) => b.type === 'tool_use')
       const toolResults: any[] = []
 
@@ -415,40 +430,13 @@ Max 1 question per response. Never more.
         })
       }
 
-      // Add assistant response + tool results to conversation
-      conversationMessages.push({ role: 'assistant', content: result.content })
       conversationMessages.push({ role: 'user', content: toolResults })
-
-      // Follow-up call so Claude can acknowledge the logs
-      const followUp = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: apiHeaders,
-        body: JSON.stringify({
-          model: 'claude-sonnet-4-20250514',
-          max_tokens: 1024,
-          system: systemPrompt,
-          tools,
-          messages: conversationMessages,
-        }),
-      })
-
-      if (!followUp.ok) {
-        // If follow-up fails, return whatever text we have from the first response
-        const textBlock = (result.content || []).find((b: any) => b.type === 'text')
-        return NextResponse.json({ message: textBlock?.text || 'Logged your data!' })
-      }
-
-      result = await followUp.json()
     }
 
-    // Extract final text reply
-    const textBlocks = (result.content || []).filter((b: any) => b.type === 'text')
-    const reply = textBlocks.map((b: any) => b.text).join('\n').trim()
-
-    if (!reply) {
+    if (!finalResponseText) {
       return NextResponse.json({ message: "Nova is temporarily unavailable. Please try again." })
     }
-    return NextResponse.json({ message: reply })
+    return NextResponse.json({ message: finalResponseText })
   } catch (error) {
     console.error('CHAT ROUTE ERROR:', error)
     return NextResponse.json({ message: "Nova is temporarily unavailable. Please try again." })
@@ -457,16 +445,44 @@ Max 1 question per response. Never more.
 
 // ── TOOL EXECUTION ──
 
+const DEDUP_WINDOW_MS = 2 * 60 * 1000 // 2 minutes
+
+async function checkRecentDuplicate(
+  table: string,
+  userId: string,
+  matchFields: Record<string, any>
+): Promise<boolean> {
+  const cutoff = new Date(Date.now() - DEDUP_WINDOW_MS).toISOString()
+  let query = supabaseAdmin
+    .from(table)
+    .select('id')
+    .eq('user_id', userId)
+    .gte('created_at', cutoff)
+
+  for (const [key, value] of Object.entries(matchFields)) {
+    query = query.eq(key, value)
+  }
+
+  const { data } = await query.limit(1)
+  return (data && data.length > 0) || false
+}
+
 async function executeToolCall(
   toolName: string,
   input: any,
   userId: string
-): Promise<{ success: boolean; error?: string; [key: string]: any }> {
+): Promise<{ success: boolean; error?: string; skipped?: boolean; [key: string]: any }> {
   const now = new Date().toISOString()
 
   try {
     switch (toolName) {
       case 'log_food': {
+        const isDupe = await checkRecentDuplicate('food_logs', userId, {
+          food_name: input.food_name,
+          meal_type: input.meal_type,
+        })
+        if (isDupe) return { success: true, skipped: true, reason: 'duplicate within 2 min window' }
+
         const { error } = await supabaseAdmin.from('food_logs').insert({
           user_id: userId,
           meal_type: input.meal_type,
@@ -482,6 +498,11 @@ async function executeToolCall(
       }
 
       case 'log_weight': {
+        const isDupe = await checkRecentDuplicate('weight_logs', userId, {
+          weight: input.weight,
+        })
+        if (isDupe) return { success: true, skipped: true, reason: 'duplicate within 2 min window' }
+
         const { error } = await supabaseAdmin.from('weight_logs').insert({
           user_id: userId,
           weight: input.weight,
@@ -492,6 +513,12 @@ async function executeToolCall(
       }
 
       case 'log_medication': {
+        const isDupe = await checkRecentDuplicate('medication_logs', userId, {
+          medication: input.medication,
+          dose: input.dose,
+        })
+        if (isDupe) return { success: true, skipped: true, reason: 'duplicate within 2 min window' }
+
         const { error } = await supabaseAdmin.from('medication_logs').insert({
           user_id: userId,
           medication: input.medication,
@@ -504,6 +531,11 @@ async function executeToolCall(
       }
 
       case 'log_water': {
+        const isDupe = await checkRecentDuplicate('water_logs', userId, {
+          amount_oz: input.amount_oz,
+        })
+        if (isDupe) return { success: true, skipped: true, reason: 'duplicate within 2 min window' }
+
         const { error } = await supabaseAdmin.from('water_logs').insert({
           user_id: userId,
           amount_oz: input.amount_oz,
@@ -514,6 +546,12 @@ async function executeToolCall(
       }
 
       case 'log_side_effect': {
+        const isDupe = await checkRecentDuplicate('side_effect_logs', userId, {
+          symptom: input.symptom,
+          severity: input.severity,
+        })
+        if (isDupe) return { success: true, skipped: true, reason: 'duplicate within 2 min window' }
+
         const { error } = await supabaseAdmin.from('side_effect_logs').insert({
           user_id: userId,
           symptom: input.symptom,
@@ -525,6 +563,12 @@ async function executeToolCall(
       }
 
       case 'log_exercise': {
+        const isDupe = await checkRecentDuplicate('exercise_logs', userId, {
+          exercise_type: input.exercise_type,
+          duration_minutes: input.duration_minutes,
+        })
+        if (isDupe) return { success: true, skipped: true, reason: 'duplicate within 2 min window' }
+
         const { error } = await supabaseAdmin.from('exercise_logs').insert({
           user_id: userId,
           exercise_type: input.exercise_type,

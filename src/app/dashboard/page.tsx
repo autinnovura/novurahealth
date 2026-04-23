@@ -14,6 +14,7 @@ import {
   Flame, Sparkles, TrendingUp, MessageCircle
 } from 'lucide-react'
 import BottomNav from '../components/BottomNav'
+import StreakCalendar from '../components/StreakCalendar'
 import { getDosesForBrand, findMedicationByLabel } from '../lib/medications'
 
 // ── Types ──────────────────────────────────────────────
@@ -114,42 +115,6 @@ function WaterGlass({ current, target }: { current: number; target: number }) {
         />
       </div>
       <div className="absolute -top-0.5 left-0 right-0 h-1 border-2 border-b-0 border-[#B8D4E8] rounded-t-sm" />
-    </div>
-  )
-}
-
-// ── Streak Calendar ────────────────────────────────────
-function StreakCalendar({ foodLogs }: { foodLogs: FoodLog[] }) {
-  const today = new Date()
-  const year = today.getFullYear()
-  const month = today.getMonth()
-  const firstDay = new Date(year, month, 1).getDay()
-  const daysInMonth = new Date(year, month + 1, 0).getDate()
-  const logDates = new Set(foodLogs.map(f => f.logged_at.split('T')[0]))
-
-  return (
-    <div className="max-w-[280px] mx-auto">
-      <p className="text-xs font-semibold text-[#6B7A72] text-center mb-2">{today.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</p>
-      <div className="grid grid-cols-7 gap-1.5">
-        {['S','M','T','W','T','F','S'].map((d,i) => <div key={i} className="text-center text-[10px] text-[#6B7A72]/60 font-medium">{d}</div>)}
-        {Array.from({ length: firstDay }, (_, i) => <div key={`pad-${i}`} />)}
-        {Array.from({ length: daysInMonth }, (_, i) => {
-          const day = i + 1
-          const date = new Date(year, month, day)
-          const dateStr = date.toISOString().split('T')[0]
-          const hasData = logDates.has(dateStr)
-          const isTodayDate = day === today.getDate()
-          const isFuture = date > today
-          return (
-            <div key={day} className={`w-8 h-8 rounded-lg flex items-center justify-center text-[10px] font-medium transition-all duration-300 ${
-              isFuture ? 'text-[#EAF2EB]' :
-              hasData ? 'bg-gradient-to-br from-[#1F4B32] to-[#2D6B45] text-white shadow-[0_2px_8px_-2px_rgba(31,75,50,0.3)]' :
-              isTodayDate ? 'bg-[#EAF2EB] text-[#1F4B32] ring-1 ring-[#1F4B32]/20' :
-              'bg-[#F5F8F3] text-[#6B7A72]/40'
-            }`}>{day}</div>
-          )
-        })}
-      </div>
     </div>
   )
 }
@@ -810,8 +775,8 @@ export default function Dashboard() {
 
           {/* Streak calendar */}
           <motion.div variants={fadeUp} className="bg-white rounded-3xl p-5 shadow-[0_4px_24px_-8px_rgba(31,75,50,0.08)] border border-[#EAF2EB]">
-            <p className="text-[10px] font-semibold text-[#6B7A72] uppercase tracking-wider mb-3">Logging Streak · {new Date().toLocaleDateString('en-US', { month: 'long' })}</p>
-            <StreakCalendar foodLogs={allFoodLogs} />
+            <p className="text-[10px] font-semibold text-[#6B7A72] uppercase tracking-wider mb-3">Logging Streak</p>
+            {userId && <StreakCalendar userId={userId} />}
           </motion.div>
 
           {/* Recent activity feed */}
