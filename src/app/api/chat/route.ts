@@ -478,7 +478,7 @@ async function checkRecentDuplicate(
     .from(table)
     .select('id')
     .eq('user_id', userId)
-    .gte('created_at', cutoff)
+    .gte('logged_at', cutoff)
 
   for (const [key, value] of Object.entries(matchFields)) {
     query = query.eq(key, value)

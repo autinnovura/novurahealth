@@ -5,12 +5,14 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import {
   startOfMonth, endOfMonth, getDay, getDaysInMonth, addMonths, subMonths,
-  subYears, addYears, isSameDay, isAfter, isBefore, format, startOfDay,
+  subDays, addDays, subYears, addYears, isSameDay, isAfter, isBefore, format, startOfDay,
 } from 'date-fns'
 import { supabase } from '../lib/supabase'
+import { localDateKey } from '../lib/dates'
 
 interface StreakCalendarProps {
   userId: string
+  refreshKey?: number
 }
 
 const DAY_LABELS = ['S', 'M', 'T', 'W', 'T', 'F', 'S']
@@ -26,8 +28,13 @@ const LOG_TABLES = [
   'exercise_logs',
 ] as const
 
-export default function StreakCalendar({ userId }: StreakCalendarProps) {
-  const today = useRef(startOfDay(new Date())).current
+export default function StreakCalendar({ userId, refreshKey }: StreakCalendarProps) {
+  const [now, setNow] = useState(() => new Date())
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 60_000)
+    return () => clearInterval(id)
+  }, [])
+  const today = startOfDay(now)
   const minDate = subYears(today, 5)
   const maxDate = addYears(today, 1)
 
@@ -50,9 +57,8 @@ export default function StreakCalendar({ userId }: StreakCalendarProps) {
     }
 
     setLoading(true)
-    const monthEnd = endOfMonth(monthStart)
-    const start = monthStart.toISOString()
-    const end = monthEnd.toISOString()
+    const queryStart = subDays(monthStart, 1).toISOString()
+    const queryEnd = addDays(endOfMonth(monthStart), 1).toISOString()
 
     // Query all log tables in parallel for logged_at values in this month
     const queries = LOG_TABLES.map(table =>
@@ -60,8 +66,8 @@ export default function StreakCalendar({ userId }: StreakCalendarProps) {
         .from(table)
         .select('logged_at')
         .eq('user_id', userId)
-        .gte('logged_at', start)
-        .lte('logged_at', end)
+        .gte('logged_at', queryStart)
+        .lt('logged_at', queryEnd)
     )
 
     const results = await Promise.all(queries)
@@ -69,7 +75,7 @@ export default function StreakCalendar({ userId }: StreakCalendarProps) {
     const days = new Set<string>()
     for (const result of results) {
       for (const row of result.data || []) {
-        days.add(row.logged_at.split('T')[0])
+        days.add(localDateKey(row.logged_at))
       }
     }
 
@@ -81,6 +87,12 @@ export default function StreakCalendar({ userId }: StreakCalendarProps) {
   useEffect(() => {
     fetchMonth(viewMonth)
   }, [viewMonth, fetchMonth])
+
+  // H-13: Clear cache and re-fetch when refreshKey changes
+  useEffect(() => {
+    cache.current = {}
+    fetchMonth(viewMonth)
+  }, [refreshKey])  // eslint-disable-line react-hooks/exhaustive-deps
 
   const canGoBack = isAfter(viewMonth, startOfMonth(minDate))
   const canGoForward = isBefore(viewMonth, startOfMonth(maxDate))
@@ -223,7 +235,7 @@ export default function StreakCalendar({ userId }: StreakCalendarProps) {
       </div>
 
       {/* Calendar grid with slide animation */}
-      <AnimatePresence mode="wait" custom={slideDirection}>
+      <AnimatePresence custom={slideDirection} mode="wait">
         <motion.div
           key={cacheKey(viewMonth)}
           custom={slideDirection}

@@ -17,6 +17,7 @@ import {
 import BottomNav from '../components/BottomNav'
 import StreakCalendar from '../components/StreakCalendar'
 import { getDosesForBrand, findMedicationByLabel } from '../lib/medications'
+import { localDateKey } from '../lib/dates'
 
 // ── Types ──────────────────────────────────────────────
 interface Profile { name: string; medication: string; dose: string; start_date: string; current_weight: string; goal_weight: string; primary_goal: string; biggest_challenge: string; exercise_level: string; first_run_complete?: boolean | null; protein_target_g?: number | null; water_target_oz?: number | null; injection_day?: string | null; injection_time?: string | null }
@@ -46,7 +47,7 @@ function getMedicationDoses(medName: string): number[] {
 function formatTime(d: string) { return new Date(d).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }) }
 function formatDate(d: string) { return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) }
 function formatDateFull(d: string) { return new Date(d).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) }
-function isSameDay(d1: Date, d2: Date) { return d1.toISOString().split('T')[0] === d2.toISOString().split('T')[0] }
+function isSameDay(d1: Date, d2: Date) { return localDateKey(d1) === localDateKey(d2) }
 function startOfDay(d: Date) { const n = new Date(d); n.setHours(0,0,0,0); return n }
 function endOfDay(d: Date) { const n = new Date(d); n.setHours(23,59,59,999); return n }
 function addDays(d: Date, n: number) { const r = new Date(d); r.setDate(r.getDate() + n); return r }
@@ -175,6 +176,7 @@ export default function Dashboard() {
   const [streak, setStreak] = useState(0)
   const [showFirstRun, setShowFirstRun] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
+  const [calendarRefreshKey, setCalendarRefreshKey] = useState(0)
   const [medMenuId, setMedMenuId] = useState<string | null>(null)
   const [editingMed, setEditingMed] = useState<MedLog | null>(null)
   const [editMedDose, setEditMedDose] = useState('')
@@ -186,7 +188,7 @@ export default function Dashboard() {
     let count = 0
     for (let i = 0; i < 60; i++) {
       const d = addDays(today, -i)
-      const ds = d.toISOString().split('T')[0]
+      const ds = localDateKey(d)
       const has = foods.some(f => f.logged_at.startsWith(ds))
       if (i === 0 && !has) continue
       if (has) count++; else break
@@ -308,6 +310,7 @@ export default function Dashboard() {
       if (error) { toast.error('Failed to save: ' + error.message); return }
       if (data) { setTodayFoodLogs(prev => [...prev, data]); setAllFoodLogs(prev => [...prev, data]); setDateFoodLogs(prev => [...prev, data]) }
       toast.success('Logged!')
+      setCalendarRefreshKey(k => k + 1)
       setModal(null); setFoodName(''); setFoodCalories(''); setFoodProtein(''); setFoodCarbs(''); setFoodFat('')
     } finally { setIsSaving(false) }
   }
@@ -331,6 +334,7 @@ export default function Dashboard() {
         if (updated) setMedChartLogs(updated)
       }
       toast.success('Logged!')
+      setCalendarRefreshKey(k => k + 1)
       setModal(null); setInjectionSite(''); setMedDose(''); setCustomDose(''); setMedNotes('')
     } finally { setIsSaving(false) }
   }
@@ -343,6 +347,7 @@ export default function Dashboard() {
       if (error) { toast.error('Failed to save: ' + error.message); return }
       if (data) setWeightLogs(prev => [data, ...prev])
       toast.success('Logged!')
+      setCalendarRefreshKey(k => k + 1)
       setModal(null); setNewWeight('')
     } finally { setIsSaving(false) }
   }
@@ -355,6 +360,7 @@ export default function Dashboard() {
       if (error) { toast.error('Failed to save: ' + error.message); return }
       if (data) setSideEffectLogs(prev => [data, ...prev])
       toast.success('Logged!')
+      setCalendarRefreshKey(k => k + 1)
       setModal(null); setSymptom(''); setSeverity(3)
     } finally { setIsSaving(false) }
   }
@@ -367,6 +373,7 @@ export default function Dashboard() {
       if (error) { toast.error('Failed to save: ' + error.message); return }
       if (data) { setWaterLogs(prev => [...prev, data]); setDateWaterLogs(prev => [...prev, data]) }
       toast.success('Logged!')
+      setCalendarRefreshKey(k => k + 1)
     } finally { setIsSaving(false) }
   }
 
@@ -378,6 +385,7 @@ export default function Dashboard() {
       if (error) { toast.error('Failed to save: ' + error.message); return }
       if (data) setCheckinLogs(prev => [data, ...prev])
       toast.success('Logged!')
+      setCalendarRefreshKey(k => k + 1)
       setModal(null); setCheckinMood(3); setCheckinEnergy(3); setCheckinNotes('')
     } finally { setIsSaving(false) }
   }
@@ -390,6 +398,7 @@ export default function Dashboard() {
       if (error) { toast.error('Failed to save: ' + error.message); return }
       if (data) setExerciseLogs(prev => [data, ...prev])
       toast.success('Logged!')
+      setCalendarRefreshKey(k => k + 1)
       setModal(null); setExerciseType(''); setExerciseDuration(''); setExerciseNotes('')
     } finally { setIsSaving(false) }
   }
@@ -471,7 +480,7 @@ export default function Dashboard() {
   const todayF = todayFoodLogs.reduce((s,f) => s+f.fat, 0)
   const todayWater = waterLogs.reduce((s,w) => s+w.amount_oz, 0)
   const proteinRem = proteinTarget ? Math.max(0, proteinTarget - todayP) : null
-  const todayCheckin = checkinLogs.find(c => c.logged_at.startsWith(new Date().toISOString().split('T')[0]))
+  const todayCheckin = checkinLogs.find(c => c.logged_at.startsWith(localDateKey(new Date())))
 
   // Date range stats (for nutrition tab)
   const dateCal = dateFoodLogs.reduce((s,f) => s+f.calories, 0)
@@ -492,7 +501,7 @@ export default function Dashboard() {
     let count = 0
     for (let i = 0; i < daysThisWeek; i++) {
       const d = addDays(weekStart, i)
-      const ds = d.toISOString().split('T')[0]
+      const ds = localDateKey(d)
       const dayP = allFoodLogs.filter(f => f.logged_at.startsWith(ds)).reduce((s,f) => s+f.protein, 0)
       if (proteinTarget && dayP >= proteinTarget) count++
     }
@@ -812,7 +821,7 @@ export default function Dashboard() {
           {/* Streak calendar */}
           <motion.div variants={fadeUp} className="bg-white rounded-3xl p-5 shadow-[0_4px_24px_-8px_rgba(31,75,50,0.08)] border border-[#EAF2EB]">
             <p className="text-[10px] font-semibold text-[#6B7A72] uppercase tracking-wider mb-3">Logging Streak</p>
-            {userId && <StreakCalendar userId={userId} />}
+            {userId && <StreakCalendar userId={userId} refreshKey={calendarRefreshKey} />}
           </motion.div>
 
           {/* Recent activity feed */}
