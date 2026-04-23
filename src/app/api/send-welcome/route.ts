@@ -1,15 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { sendWelcomeEmail } from '../../lib/email'
+import { getAuthedUser, unauthorized } from '../../lib/auth'
 
 export async function POST(req: NextRequest) {
-  try {
-    const { email, name } = await req.json()
+  const user = await getAuthedUser()
+  if (!user) return unauthorized()
 
-    if (!email || !name) {
+  try {
+    const { name } = await req.json()
+
+    if (!user.email || !name) {
       return NextResponse.json({ error: 'Missing email or name' }, { status: 400 })
     }
 
-    const { error } = await sendWelcomeEmail(email, name)
+    const { error } = await sendWelcomeEmail(user.email, name)
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 })

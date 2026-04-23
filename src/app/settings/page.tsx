@@ -422,7 +422,7 @@ export default function Settings() {
         {/* ══════════ DATA ══════════ */}
         {activeSection === 'preferences' && (<>
           {/* Import */}
-          {userId && <DataImport userId={userId} />}
+          {userId && <DataImport />}
 
           {/* Export */}
           <div className="bg-white border border-[#EAF2EB] rounded-3xl shadow-[0_4px_24px_-8px_rgba(31,75,50,0.08)] p-6 space-y-4">

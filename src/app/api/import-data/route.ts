@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import * as XLSX from 'xlsx'
 import mammoth from 'mammoth'
+import { getAuthedUser, unauthorized } from '../../lib/auth'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300
@@ -47,17 +48,16 @@ Rules:
 - If the file contains no health data: {"extracted": false, "summary": "description of file contents"}`
 
 export async function POST(req: NextRequest) {
+  const user = await getAuthedUser()
+  if (!user) return unauthorized()
+
   try {
     const formData = await req.formData()
-    const userId = formData.get('userId') as string
+    const userId = user.id
 
     const single = formData.get('file') as File | null
     const multi = formData.getAll('files') as File[]
     const files: File[] = multi.length > 0 ? multi : single ? [single] : []
-
-    if (!userId) {
-      return NextResponse.json({ error: 'Missing userId' }, { status: 400 })
-    }
     if (files.length === 0) {
       return NextResponse.json({ error: 'No files uploaded' }, { status: 400 })
     }

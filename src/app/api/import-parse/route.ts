@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { getAuthedUser, unauthorized } from '../../lib/auth'
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || '',
@@ -7,14 +8,17 @@ const supabaseAdmin = createClient(
 )
 
 export async function POST(req: NextRequest) {
+  const user = await getAuthedUser()
+  if (!user) return unauthorized()
+
   try {
     const formData = await req.formData()
     const file = formData.get('image') as File
-    const userId = formData.get('userId') as string
+    const userId = user.id
     const context = formData.get('context') as string || ''
 
-    if (!file || !userId) {
-      return NextResponse.json({ error: 'Missing image or userId' }, { status: 400 })
+    if (!file) {
+      return NextResponse.json({ error: 'Missing image' }, { status: 400 })
     }
 
     // Convert file to base64

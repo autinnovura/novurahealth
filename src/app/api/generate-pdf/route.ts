@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { getAuthedUser, unauthorized } from '../../lib/auth'
 
 export async function POST(req: NextRequest) {
+  const user = await getAuthedUser()
+  if (!user) return unauthorized()
+
   const { type, content, userName } = await req.json()
   if (!content) {
     return NextResponse.json({ error: 'Missing content' }, { status: 400 })

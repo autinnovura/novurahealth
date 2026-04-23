@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { getAuthedUser, unauthorized } from '../../lib/auth'
 
 export async function POST(req: NextRequest) {
+  const user = await getAuthedUser()
+  if (!user) return unauthorized()
+
   const { message, profile, plan, recentCheckins, weightTrend } = await req.json()
 
   const systemPrompt = `You are Nova, the AI health coach for NovuraHealth, specializing in GLP-1 medication tapering and maintenance. You help users transition off GLP-1 medications safely and maintain their weight loss long-term.

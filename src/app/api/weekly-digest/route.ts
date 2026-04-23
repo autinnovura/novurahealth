@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { sendWeeklyDigest } from '../../lib/email'
+import { timingSafeEqual } from 'crypto'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -8,8 +9,15 @@ const supabase = createClient(
 )
 
 export async function GET(req: NextRequest) {
-  const authHeader = req.headers.get('authorization')
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+  const authHeader = req.headers.get('authorization') || ''
+  const secret = process.env.CRON_SECRET
+  if (!secret) {
+    return NextResponse.json({ error: 'Server misconfigured' }, { status: 500 })
+  }
+  const expected = `Bearer ${secret}`
+  const a = Buffer.from(authHeader)
+  const b = Buffer.from(expected)
+  if (a.length !== b.length || !timingSafeEqual(a, b)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 

@@ -359,7 +359,7 @@ export default function Dashboard() {
 
   async function deleteMedLog(id: string) {
     if (!userId || !confirm('Delete this injection?')) return
-    const res = await fetch(`/api/medication-logs/${id}?userId=${userId}`, { method: 'DELETE' })
+    const res = await fetch(`/api/medication-logs/${id}`, { method: 'DELETE' })
     if (res.ok) {
       setMedLogs(prev => prev.filter(m => m.id !== id))
       setMedChartLogs(prev => prev.filter(m => m.id !== id))
@@ -381,7 +381,6 @@ export default function Dashboard() {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        userId,
         dose: editMedDose,
         injection_site: editMedSite,
         logged_at: new Date(editMedDate).toISOString(),
@@ -885,7 +884,7 @@ export default function Dashboard() {
                   <span className="text-xs text-[#4A90D9] font-medium">{w.amount_oz}oz</span>
                   <div className="flex items-center gap-2">
                     <span className="text-[10px] text-[#6B7A72]">{formatTime(w.logged_at)}</span>
-                    {userId && <LogEntryMenu logType="water_logs" logId={w.id} userId={userId} onUpdate={refreshData}
+                    {userId && <LogEntryMenu logType="water_logs" logId={w.id} onUpdate={refreshData}
                       fields={[{ key: 'amount_oz', label: 'Amount (oz)', type: 'number' }, { key: 'logged_at', label: 'Date & time', type: 'datetime-local' }]}
                       currentValues={w} />}
                   </div>
@@ -913,7 +912,7 @@ export default function Dashboard() {
                       <div className="flex-1 min-w-0 mr-2"><span className="text-sm text-[#0D1F16]">{f.food_name}</span><span className="text-[10px] text-[#6B7A72]/40 ml-2">{formatTime(f.logged_at)}</span></div>
                       <div className="flex items-center gap-2">
                         <div className="flex gap-2 text-[10px]"><span className="text-[#6B7A72]">{f.calories}cal</span><span className="text-[#1F4B32] font-semibold">{f.protein}g P</span><span className="text-[#6B7A72]">{f.carbs}g C</span><span className="text-[#6B7A72]">{f.fat}g F</span></div>
-                        {userId && <LogEntryMenu logType="food_logs" logId={f.id} userId={userId} onUpdate={refreshData}
+                        {userId && <LogEntryMenu logType="food_logs" logId={f.id} onUpdate={refreshData}
                           fields={[
                             { key: 'meal_type', label: 'Meal', type: 'select', options: ['breakfast','lunch','dinner','snack'] },
                             { key: 'food_name', label: 'Food', type: 'text' },
@@ -942,7 +941,7 @@ export default function Dashboard() {
                     <div className="flex-1 min-w-0 mr-2"><span className="text-sm text-[#0D1F16]">{f.food_name}</span><span className="text-[10px] text-[#6B7A72]/40 ml-2">{formatDate(f.logged_at)} {formatTime(f.logged_at)}</span></div>
                     <div className="flex items-center gap-2">
                       <div className="flex gap-2 text-[10px]"><span className="text-[#6B7A72]">{f.calories}cal</span><span className="text-[#1F4B32] font-semibold">{f.protein}g P</span></div>
-                      {userId && <LogEntryMenu logType="food_logs" logId={f.id} userId={userId} onUpdate={refreshData}
+                      {userId && <LogEntryMenu logType="food_logs" logId={f.id} onUpdate={refreshData}
                         fields={[
                           { key: 'meal_type', label: 'Meal', type: 'select', options: ['breakfast','lunch','dinner','snack'] },
                           { key: 'food_name', label: 'Food', type: 'text' },
@@ -1036,7 +1035,7 @@ export default function Dashboard() {
               <span className="text-sm text-[#0D1F16] font-medium" style={{ fontVariantNumeric: 'tabular-nums' }}>{w.weight} lbs</span>
               <div className="flex items-center gap-2">
                 <span className="text-[10px] text-[#6B7A72]">{formatDate(w.logged_at)} · {formatTime(w.logged_at)}</span>
-                {userId && <LogEntryMenu logType="weight_logs" logId={w.id} userId={userId} onUpdate={refreshData}
+                {userId && <LogEntryMenu logType="weight_logs" logId={w.id} onUpdate={refreshData}
                   fields={[{ key: 'weight', label: 'Weight (lbs)', type: 'number' }, { key: 'logged_at', label: 'Date & time', type: 'datetime-local' }]}
                   currentValues={w} />}
               </div>
@@ -1051,7 +1050,7 @@ export default function Dashboard() {
                 <div><span className="text-sm text-[#0D1F16]">{e.exercise_type}</span><span className="text-xs text-[#4A90D9] ml-2 font-medium">{e.duration_minutes}min</span></div>
                 <div className="flex items-center gap-2">
                   <span className="text-[10px] text-[#6B7A72]">{formatDate(e.logged_at)}</span>
-                  {userId && <LogEntryMenu logType="exercise_logs" logId={e.id} userId={userId} onUpdate={refreshData}
+                  {userId && <LogEntryMenu logType="exercise_logs" logId={e.id} onUpdate={refreshData}
                     fields={[{ key: 'exercise_type', label: 'Type', type: 'text' }, { key: 'duration_minutes', label: 'Minutes', type: 'number' }, { key: 'notes', label: 'Notes', type: 'text' }, { key: 'logged_at', label: 'Date & time', type: 'datetime-local' }]}
                     currentValues={e} />}
                 </div>
@@ -1067,7 +1066,7 @@ export default function Dashboard() {
                 <div><span className="text-sm text-[#0D1F16]">{e.symptom}</span><span className="text-xs text-[#C4742B] ml-2">{'●'.repeat(e.severity)}{'○'.repeat(5-e.severity)}</span></div>
                 <div className="flex items-center gap-2">
                   <span className="text-[10px] text-[#6B7A72]">{formatDate(e.logged_at)} · {formatTime(e.logged_at)}</span>
-                  {userId && <LogEntryMenu logType="side_effect_logs" logId={e.id} userId={userId} onUpdate={refreshData}
+                  {userId && <LogEntryMenu logType="side_effect_logs" logId={e.id} onUpdate={refreshData}
                     fields={[{ key: 'symptom', label: 'Symptom', type: 'text' }, { key: 'severity', label: 'Severity (1-5)', type: 'severity' }, { key: 'logged_at', label: 'Date & time', type: 'datetime-local' }]}
                     currentValues={e} />}
                 </div>

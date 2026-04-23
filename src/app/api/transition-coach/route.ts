@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { getAuthedUser, unauthorized } from '../../lib/auth'
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || '',
@@ -126,12 +127,15 @@ ${tc.length > 0 ? `Recent tapering check-ins: ${tc.slice(0, 5).map((c: { hunger:
 }
 
 export async function POST(req: NextRequest) {
-  const { messages, userId } = await req.json()
-  if (!userId || !messages?.length) {
+  const user = await getAuthedUser()
+  if (!user) return unauthorized()
+
+  const { messages } = await req.json()
+  if (!messages?.length) {
     return NextResponse.json({ error: 'Missing data' }, { status: 400 })
   }
 
-  const context = await getUserContext(userId)
+  const context = await getUserContext(user.id)
   if (!context) {
     return NextResponse.json({ error: 'User not found' }, { status: 404 })
   }

@@ -1,11 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
+import { getAuthedUser, unauthorized } from '../../lib/auth'
 
 const client = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY!,
 })
 
 export async function POST(request: NextRequest) {
+  const user = await getAuthedUser()
+  if (!user) return unauthorized()
+
   try {
     const body = await request.json().catch(() => null)
     if (!body || !body.food) {

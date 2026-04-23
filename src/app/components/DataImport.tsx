@@ -16,7 +16,7 @@ interface ImportResponse {
   debug?: string
 }
 
-export default function DataImport({ userId }: { userId: string }) {
+export default function DataImport() {
   const [files, setFiles] = useState<File[]>([])
   const [status, setStatus] = useState<'idle' | 'uploading' | 'done' | 'error'>('idle')
   const [result, setResult] = useState<ImportResponse | null>(null)
@@ -46,7 +46,6 @@ export default function DataImport({ userId }: { userId: string }) {
     setResult(null)
 
     const formData = new FormData()
-    formData.append('userId', userId)
     for (const f of files) {
       formData.append('files', f)
     }

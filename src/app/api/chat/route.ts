@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { getAuthedUser, unauthorized } from '../../lib/auth'
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || '',
@@ -171,13 +172,16 @@ ${tc.length > 0 ? `Latest tapering check-in: hunger ${tc[0].hunger}/5, cravings 
 }
 
 export async function POST(req: NextRequest) {
-  const { messages, userId } = await req.json()
-  if (!userId || !messages?.length) {
+  const user = await getAuthedUser()
+  if (!user) return unauthorized()
+
+  const { messages } = await req.json()
+  if (!messages?.length) {
     return NextResponse.json({ error: 'Missing data' }, { status: 400 })
   }
 
   // Pull all user context
-  const context = await getUserContext(userId)
+  const context = await getUserContext(user.id)
   if (!context) {
     return NextResponse.json({ error: 'User not found' }, { status: 404 })
   }
@@ -420,7 +424,7 @@ Max 1 question per response. Never more.
       const toolResults: any[] = []
 
       for (const toolCall of toolUseBlocks) {
-        const toolResult = await executeToolCall(toolCall.name, toolCall.input, userId)
+        const toolResult = await executeToolCall(toolCall.name, toolCall.input, user.id)
         toolResults.push({
           type: 'tool_result',
           tool_use_id: toolCall.id,

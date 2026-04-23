@@ -170,7 +170,7 @@ export default function Maintenance() {
     const res = await fetch('/api/transition-coach', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messages: msgs, userId }),
+      body: JSON.stringify({ messages: msgs }),
     })
     const { message } = await res.json()
     return message || 'Unable to generate plan. Try again.'

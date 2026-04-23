@@ -88,7 +88,6 @@ function Chat() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          userId,
           messages: updated.map(m => ({ role: m.role, content: m.content })),
         }),
       })

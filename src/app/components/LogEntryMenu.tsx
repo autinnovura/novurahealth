@@ -12,7 +12,6 @@ interface FieldDef {
 interface LogEntryMenuProps {
   logType: string
   logId: string
-  userId: string
   fields: FieldDef[]
   currentValues: Record<string, any>
   onUpdate: () => void
@@ -27,7 +26,7 @@ const API_MAP: Record<string, string> = {
   medication_logs: 'medication-logs',
 }
 
-export default function LogEntryMenu({ logType, logId, userId, fields, currentValues, onUpdate }: LogEntryMenuProps) {
+export default function LogEntryMenu({ logType, logId, fields, currentValues, onUpdate }: LogEntryMenuProps) {
   const [showMenu, setShowMenu] = useState(false)
   const [editing, setEditing] = useState(false)
   const [values, setValues] = useState<Record<string, any>>({})
@@ -51,12 +50,12 @@ export default function LogEntryMenu({ logType, logId, userId, fields, currentVa
   async function handleDelete() {
     if (!confirm('Delete this entry?')) return
     setShowMenu(false)
-    const res = await fetch(`/api/${apiPath}/${logId}?userId=${userId}`, { method: 'DELETE' })
+    const res = await fetch(`/api/${apiPath}/${logId}`, { method: 'DELETE' })
     if (res.ok) onUpdate()
   }
 
   async function handleSave() {
-    const body: Record<string, any> = { userId }
+    const body: Record<string, any> = {}
     for (const f of fields) {
       const v = values[f.key]
       if (f.type === 'datetime-local' && v) {

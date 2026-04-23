@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { getAuthedUser, unauthorized } from '../../lib/auth'
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || '',
@@ -7,11 +8,15 @@ const supabaseAdmin = createClient(
 )
 
 export async function POST(req: NextRequest) {
-  try {
-    const { userId, data } = await req.json()
+  const user = await getAuthedUser()
+  if (!user) return unauthorized()
 
-    if (!userId || !data) {
-      return NextResponse.json({ error: 'Missing userId or data' }, { status: 400 })
+  try {
+    const { data } = await req.json()
+    const userId = user.id
+
+    if (!data) {
+      return NextResponse.json({ error: 'Missing data' }, { status: 400 })
     }
 
     const results: Record<string, number> = {}

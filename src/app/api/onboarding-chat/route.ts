@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { getAuthedUser, unauthorized } from '../../lib/auth'
 
 export async function POST(req: NextRequest) {
+  const user = await getAuthedUser()
+  if (!user) return unauthorized()
+
   const { step, data } = await req.json()
 
   const systemPrompt = `You are Nova, the AI health coach for NovuraHealth. You're onboarding a new user.
