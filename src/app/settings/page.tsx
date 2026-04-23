@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '../lib/supabase'
+import { toast } from 'sonner'
 import DataImport from '../components/DataImport'
 import BottomNav from '../components/BottomNav'
 import { ArrowLeft, ChevronRight, Download, Shield, AlertTriangle, User, Lock, Database, Syringe, Pill } from 'lucide-react'
@@ -57,6 +58,7 @@ export default function Settings() {
   // Danger zone
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [deleteText, setDeleteText] = useState('')
+  const [deleting, setDeleting] = useState(false)
 
   // Active section
   const [activeSection, setActiveSection] = useState<'profile' | 'account' | 'preferences'>('profile')
@@ -122,9 +124,22 @@ export default function Settings() {
 
   async function deleteAccount() {
     if (deleteText !== 'DELETE') return
-    // Sign out and redirect — actual deletion would need a server-side function
-    await supabase.auth.signOut()
-    router.push('/')
+    setDeleting(true)
+    try {
+      const res = await fetch('/api/delete-account', { method: 'POST' })
+      const body = await res.json()
+      if (!res.ok) {
+        toast.error(body.error || 'Failed to delete account')
+        setDeleting(false)
+        return
+      }
+      toast.success('Account deleted')
+      await supabase.auth.signOut()
+      router.push('/')
+    } catch {
+      toast.error('Failed to delete account')
+      setDeleting(false)
+    }
   }
 
   async function exportData() {
@@ -409,9 +424,9 @@ export default function Settings() {
                 <div className="flex gap-2">
                   <button onClick={() => { setShowDeleteConfirm(false); setDeleteText('') }}
                     className="flex-1 py-2.5 rounded-2xl border border-[#EAF2EB] text-sm text-[#6B7A72] font-medium cursor-pointer hover:bg-[#F5F8F3] transition-all duration-300">Cancel</button>
-                  <button onClick={deleteAccount} disabled={deleteText !== 'DELETE'}
+                  <button onClick={deleteAccount} disabled={deleteText !== 'DELETE' || deleting}
                     className="flex-1 py-2.5 rounded-2xl bg-red-600 text-white text-sm font-semibold cursor-pointer hover:bg-red-700 transition-all duration-300 disabled:opacity-30">
-                    Delete My Account
+                    {deleting ? 'Deleting...' : 'Delete My Account'}
                   </button>
                 </div>
               </div>

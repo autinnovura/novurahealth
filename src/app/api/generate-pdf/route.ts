@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getAuthedUser, unauthorized } from '../../lib/auth'
 import { standardLimiter, checkRateLimit } from '../../lib/rate-limit'
+import { escapeHtml } from '../../lib/escape'
 
 export async function POST(req: NextRequest) {
   const user = await getAuthedUser()
@@ -31,18 +32,18 @@ export async function POST(req: NextRequest) {
       if (!trimmed) return '<div style="height:12px"></div>'
       // Detect section headers (ALL CAPS lines or lines ending with colon)
       if (trimmed === trimmed.toUpperCase() && trimmed.length > 3 && !trimmed.startsWith('-') && !trimmed.startsWith('→')) {
-        return `<h2 style="font-size:15px;font-weight:700;color:#2D5A3D;margin:18px 0 6px 0;letter-spacing:0.5px">${trimmed}</h2>`
+        return `<h2 style="font-size:15px;font-weight:700;color:#2D5A3D;margin:18px 0 6px 0;letter-spacing:0.5px">${escapeHtml(trimmed)}</h2>`
       }
       if (trimmed.startsWith('Phase ') || trimmed.startsWith('PHASE ')) {
-        return `<h3 style="font-size:14px;font-weight:700;color:#1E1E1C;margin:16px 0 4px 0;border-bottom:1px solid #E8E8E4;padding-bottom:4px">${trimmed}</h3>`
+        return `<h3 style="font-size:14px;font-weight:700;color:#1E1E1C;margin:16px 0 4px 0;border-bottom:1px solid #E8E8E4;padding-bottom:4px">${escapeHtml(trimmed)}</h3>`
       }
       if (trimmed.startsWith('- ')) {
-        return `<div style="padding-left:16px;margin:3px 0;color:#444">${trimmed}</div>`
+        return `<div style="padding-left:16px;margin:3px 0;color:#444">${escapeHtml(trimmed)}</div>`
       }
       if (trimmed.startsWith('→')) {
-        return `<div style="padding-left:16px;margin:3px 0;color:#2D5A3D;font-weight:600">${trimmed}</div>`
+        return `<div style="padding-left:16px;margin:3px 0;color:#2D5A3D;font-weight:600">${escapeHtml(trimmed)}</div>`
       }
-      return `<p style="margin:4px 0;color:#333;line-height:1.6">${trimmed}</p>`
+      return `<p style="margin:4px 0;color:#333;line-height:1.6">${escapeHtml(trimmed)}</p>`
     })
     .join('\n')
 
@@ -51,7 +52,7 @@ export async function POST(req: NextRequest) {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>${userName ? `${userName}'s ` : ''}${title} — NovuraHealth</title>
+<title>${userName ? `${escapeHtml(userName)}'s ` : ''}${title} — NovuraHealth</title>
 <style>
   @media print {
     body { margin: 0; }
@@ -119,7 +120,7 @@ export async function POST(req: NextRequest) {
 <button class="print-btn no-print" onclick="window.print()">Save as PDF</button>
 
 <div class="header">
-  <h1>${userName ? `${userName}'s ` : ''}${title}</h1>
+  <h1>${userName ? `${escapeHtml(userName)}'s ` : ''}${title}</h1>
   <p>NovuraHealth AI Coach</p>
 </div>
 

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, ResponsiveContainer, ReferenceLine } from 'recharts'
 import { Info, Clock, Syringe, Activity } from 'lucide-react'
@@ -42,6 +42,11 @@ interface Props {
 export default function MedicationLevelChart({ medication, dose, injectionLogs }: Props) {
   const [timeRange, setTimeRange] = useState<'week' | 'month' | '90days'>('week')
   const [showInfoSheet, setShowInfoSheet] = useState(false)
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 60_000)
+    return () => clearInterval(id)
+  }, [])
 
   const med = findMedicationByLabel(medication)
 
@@ -76,7 +81,6 @@ export default function MedicationLevelChart({ medication, dose, injectionLogs }
 
   const injectionTimes = useMemo(() => {
     const rangeHours = timeRange === 'week' ? 168 : timeRange === 'month' ? 720 : 2160
-    const now = Date.now()
     const startTime = now - rangeHours * 3600 * 1000
     // Include doses up to 5 half-lives before the start of the window
     const cutoff = startTime - halfLifeHours * 5 * 3600 * 1000
@@ -92,14 +96,13 @@ export default function MedicationLevelChart({ medication, dose, injectionLogs }
     }
 
     return []
-  }, [injectionLogs, timeRange, currentDoseMg, halfLifeHours])
+  }, [injectionLogs, timeRange, currentDoseMg, halfLifeHours, now])
 
   const pastHours = timeRange === 'week' ? 168 : timeRange === 'month' ? 720 : 2160
   const futureHours = 168
   const totalHours = pastHours + futureHours
 
   const chartData = useMemo(() => {
-    const now = Date.now()
     const startTime = now - pastHours * 3600 * 1000
     const points: { time: number; level: number; date: Date; isFuture: boolean; dateLabel: string }[] = []
     const step = totalHours / 200
@@ -121,7 +124,7 @@ export default function MedicationLevelChart({ medication, dose, injectionLogs }
       })
     }
     return points
-  }, [injectionTimes, pastHours, totalHours, ke, ka])
+  }, [injectionTimes, pastHours, totalHours, ke, ka, now])
 
   const maxLevel = Math.max(...chartData.map(p => p.level), 0.01)
 
@@ -136,7 +139,7 @@ export default function MedicationLevelChart({ medication, dose, injectionLogs }
   // Next shot countdown
   const lastInjTime = injectionTimes.length > 0 ? injectionTimes[injectionTimes.length - 1].time : null
   const nextShotTime = lastInjTime ? lastInjTime + dosingIntervalHours * 3600 * 1000 : null
-  const nextShotMs = nextShotTime ? nextShotTime - Date.now() : null
+  const nextShotMs = nextShotTime ? nextShotTime - now : null
   const nextShotDays = nextShotMs !== null ? Math.floor(nextShotMs / 86400000) : null
   const nextShotHours = nextShotMs !== null ? Math.floor((nextShotMs % 86400000) / 3600000) : null
 
