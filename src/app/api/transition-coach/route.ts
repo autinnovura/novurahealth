@@ -136,7 +136,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Rate limit exceeded', message: 'Too many requests. Please slow down and try again.' }, { status: 429 })
   }
 
-  let body: { messages?: { role: string; content: string }[] }
+  let body: { messages?: { role: string; content: string }[]; action?: string }
   try {
     body = await req.json()
   } catch (err: unknown) {
@@ -147,6 +147,39 @@ export async function POST(req: NextRequest) {
   const { messages } = body
   if (!messages?.length) {
     return NextResponse.json({ error: 'Missing data', message: 'No message provided.' }, { status: 400 })
+  }
+
+  // ── Readiness gate for plan generation ────────────────
+  const lastMessage = messages[messages.length - 1]?.content?.toLowerCase() || ''
+  const isPlanGeneration = body.action === 'generate_plan'
+    || lastMessage.includes('generate my tapering plan')
+    || lastMessage.includes('generate my complete tapering plan')
+
+  if (isPlanGeneration) {
+    const { data: taperPlan } = await supabaseAdmin
+      .from('tapering_plans')
+      .select('readiness_score, readiness_answers')
+      .eq('user_id', user.id)
+      .single()
+
+    const { data: profileData } = await supabaseAdmin
+      .from('profiles')
+      .select('tapering_override')
+      .eq('id', user.id)
+      .single()
+
+    const MIN_READINESS = 14
+    const score = taperPlan?.readiness_score ?? 0
+    const hasOverride = profileData?.tapering_override === true
+
+    if (score < MIN_READINESS && !hasOverride) {
+      return NextResponse.json({
+        error: 'readiness_insufficient',
+        message: `You've met ${score}/20 readiness criteria. You need at least ${MIN_READINESS}/20 to generate a tapering plan. Keep working on the areas that are still incomplete — Trish can still answer questions and help you prepare.`,
+        current_score: score,
+        minimum_score: MIN_READINESS,
+      }, { status: 403 })
+    }
   }
 
   const context = await getUserContext(user.id)

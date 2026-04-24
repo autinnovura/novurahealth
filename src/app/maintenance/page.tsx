@@ -143,6 +143,10 @@ export default function Maintenance() {
   const [fitnessLevel, setFitnessLevel] = useState('Intermediate')
   const [equipment, setEquipment] = useState('Dumbbells')
 
+  // Override
+  const [hasOverride, setHasOverride] = useState(false)
+  const [showOverrideConfirm, setShowOverrideConfirm] = useState(false)
+
   // Saved plans (localStorage)
   const [savedMealPlans, setSavedMealPlans] = useState<string[]>([])
   const [showSaved, setShowSaved] = useState(false)
@@ -167,6 +171,7 @@ export default function Maintenance() {
       const { data: p } = await supabase.from('profiles').select('*').eq('id', user.id).single()
       if (!p) { router.push('/onboarding'); return }
       setProfile(p)
+      if (p.tapering_override) setHasOverride(true)
 
       const [{ data: tp }, { data: latestMed }] = await Promise.all([
         supabase.from('tapering_plans').select('*').eq('user_id', user.id).single(),
@@ -308,18 +313,38 @@ export default function Maintenance() {
     if (!userId) return
     const answers = { ...readiness }
     if (confirmed) answers.__confirmed_ready = true
-    const checked = ALL_ASSESSMENT_ITEMS.filter(item => readiness[item]).length
-    const score = Math.round((checked / ALL_ASSESSMENT_ITEMS.length) * 100)
-    const payload = { readiness_score: score, readiness_answers: answers, updated_at: new Date().toISOString() }
-    if (plan) {
-      const { data } = await supabase.from('tapering_plans').update(payload).eq('id', plan.id).select().single()
-      if (data) setPlan(data)
-    } else {
-      const { data } = await supabase.from('tapering_plans').insert({ user_id: userId, phase: 'exploring', ...payload }).select().single()
-      if (data) setPlan(data)
+
+    try {
+      const res = await fetch('/api/readiness-assessment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ answers }),
+      })
+      const data = await res.json()
+      if (res.ok && data.plan) {
+        setPlan(data.plan)
+      }
+    } catch (err) {
+      console.error('Save readiness error:', err)
     }
+
     setAssessmentSaved(true)
     if (confirmed) setConfirmedReady(true)
+  }
+
+  async function activateOverride() {
+    try {
+      const res = await fetch('/api/tapering-override', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      })
+      if (res.ok) {
+        setHasOverride(true)
+        setShowOverrideConfirm(false)
+      }
+    } catch (err) {
+      console.error('Override error:', err)
+    }
   }
 
   // ── Chat ──────────────────────────────────────────────
@@ -347,12 +372,12 @@ export default function Maintenance() {
 
   const phase = computePhase(plan, latestMedDose, daysSinceLastDose)
   const phaseIdx = PHASES.findIndex(p => p.id === phase)
-  const readinessScore = plan?.readiness_score ?? null
   const checkedCount = ALL_ASSESSMENT_ITEMS.filter(item => readiness[item]).length
   const totalItems = ALL_ASSESSMENT_ITEMS.length
-  const currentPct = Math.round((checkedCount / totalItems) * 100)
-  const isFullyReady = checkedCount === totalItems
-  const taperUnlocked = confirmedReady
+  const MIN_READINESS = 14
+  const savedScore = plan?.readiness_score ?? 0
+  const currentScore = Math.max(savedScore, checkedCount)
+  const taperUnlocked = currentScore >= MIN_READINESS || hasOverride
 
   return (
     <div className="min-h-screen bg-[#FAFAF7] pb-24" style={{ fontFamily: 'var(--font-inter)' }}>
@@ -490,16 +515,16 @@ export default function Maintenance() {
             <div className="mb-3">
               <div className="flex justify-between text-[10px] mb-1">
                 <span className="text-[#6B7A72] font-semibold uppercase">Readiness</span>
-                <span className={`font-bold ${currentPct === 100 ? 'text-[#1F4B32]' : currentPct >= 75 ? 'text-[#C4742B]' : 'text-[#6B7A72]'}`}>{checkedCount}/{totalItems} ({currentPct}%)</span>
+                <span className={`font-bold ${currentScore >= MIN_READINESS ? 'text-[#1F4B32]' : currentScore >= 10 ? 'text-[#C4742B]' : 'text-[#6B7A72]'}`}>{currentScore}/{totalItems}</span>
               </div>
               <div className="h-2.5 bg-[#F5F8F3] rounded-full overflow-hidden">
                 <div
                   className="h-full rounded-full transition-all duration-500"
                   style={{
-                    width: `${currentPct}%`,
-                    background: currentPct === 100
+                    width: `${(currentScore / totalItems) * 100}%`,
+                    background: currentScore >= MIN_READINESS
                       ? 'linear-gradient(to right, #7FFFA4, #1F4B32)'
-                      : currentPct >= 75 ? '#C4742B' : '#6B7A72',
+                      : currentScore >= 10 ? '#C4742B' : '#6B7A72',
                   }}
                 />
               </div>
@@ -507,7 +532,7 @@ export default function Maintenance() {
             {taperUnlocked && (
               <div className="grid grid-cols-2 gap-2">
                 <div className="bg-[#EAF2EB] rounded-2xl p-3 text-center">
-                  <p className="text-lg font-bold text-[#1F4B32]">{readinessScore}%</p>
+                  <p className="text-lg font-bold text-[#1F4B32]">{currentScore}/{totalItems}</p>
                   <p className="text-[9px] text-[#1F4B32]/60">readiness score</p>
                 </div>
                 <div className="bg-[#F5F8F3] rounded-2xl p-3 text-center">
@@ -546,37 +571,38 @@ export default function Maintenance() {
             })}
 
             {/* Assessment result + action */}
-            <div className={`rounded-3xl p-6 ${isFullyReady ? 'bg-[#EAF2EB] border border-[#1F4B32]/20' : 'bg-[#F5F8F3] border border-[#EAF2EB]'}`}>
-              {isFullyReady ? (
+            <div className={`rounded-3xl p-6 ${checkedCount >= MIN_READINESS ? 'bg-[#EAF2EB] border border-[#1F4B32]/20' : 'bg-[#F5F8F3] border border-[#EAF2EB]'}`}>
+              {checkedCount >= MIN_READINESS ? (
                 <div className="text-center space-y-3">
                   <div className="w-12 h-12 rounded-full bg-gradient-to-r from-[#1F4B32] to-[#2D6B45] flex items-center justify-center mx-auto">
                     <Check className="w-6 h-6 text-white" strokeWidth={2.5} />
                   </div>
                   <h3 className="text-base font-bold text-[#1F4B32]">You're ready to taper</h3>
-                  <p className="text-xs text-[#1F4B32]/70 max-w-sm mx-auto">You've checked every box. Your habits, health, and support system are in place. Confirm below to unlock your personalized tapering plan.</p>
+                  <p className="text-xs text-[#1F4B32]/70 max-w-sm mx-auto">You've met {checkedCount}/{totalItems} readiness criteria (minimum {MIN_READINESS}). Your habits, health, and support system are in place.</p>
                   <button onClick={() => saveReadiness(true)}
                     className="w-full bg-gradient-to-r from-[#1F4B32] to-[#2D6B45] text-white py-4 rounded-2xl text-sm font-semibold cursor-pointer hover:shadow-[0_4px_16px_-4px_rgba(31,75,50,0.4)] transition-all duration-300 mt-2">
-                    I'm Ready — Unlock My Tapering Plan
+                    Save &amp; Unlock My Tapering Plan
                   </button>
                 </div>
               ) : (
                 <div className="space-y-3">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center shrink-0">
-                      {currentPct >= 75 ? <Unlock className="w-5 h-5 text-[#C4742B]" /> : <Lock className="w-5 h-5 text-[#6B7A72]" />}
+                      {checkedCount >= 10 ? <Unlock className="w-5 h-5 text-[#C4742B]" /> : <Lock className="w-5 h-5 text-[#6B7A72]" />}
                     </div>
                     <div>
-                      <h3 className="text-sm font-bold text-[#0D1F16]">{currentPct >= 75 ? 'Almost there' : 'Keep building habits'}</h3>
-                      <p className="text-xs text-[#6B7A72]">{totalItems - checkedCount} item{totalItems - checkedCount !== 1 ? 's' : ''} remaining before you can generate a tapering plan</p>
+                      <h3 className="text-sm font-bold text-[#0D1F16]">{checkedCount >= 10 ? 'Almost there' : 'Keep building habits'}</h3>
+                      <p className="text-xs text-[#6B7A72]">{MIN_READINESS - checkedCount} more item{MIN_READINESS - checkedCount !== 1 ? 's' : ''} needed to unlock plan generation ({checkedCount}/{MIN_READINESS})</p>
                     </div>
                   </div>
                   <button onClick={() => saveReadiness()}
                     className="w-full bg-white text-[#1F4B32] py-2.5 rounded-2xl text-xs font-semibold cursor-pointer border border-[#1F4B32]/20 hover:bg-[#EAF2EB] transition-all duration-300">
-                    Save Progress ({currentPct}%)
+                    Save Progress ({checkedCount}/{totalItems})
                   </button>
-                  {currentPct >= 75 && (
-                    <p className="text-[10px] text-[#6B7A72] text-center">Feeling ready despite unchecked items? Talk to Trish in the Coach tab to discuss.</p>
-                  )}
+                  <button onClick={() => setShowOverrideConfirm(true)}
+                    className="w-full text-[10px] text-[#6B7A72] py-1 cursor-pointer hover:text-[#0D1F16] transition-all duration-300">
+                    I'm already tapering — let me skip
+                  </button>
                 </div>
               )}
             </div>
@@ -760,6 +786,33 @@ export default function Maintenance() {
         {/* ═══ COACH TAB ═══ */}
         {activeTab === 'coach' && (
           <div className="flex flex-col" style={{ height: 'calc(100vh - 220px)' }}>
+            {/* Readiness score card */}
+            <div className="bg-white rounded-3xl p-5 shadow-sm border border-[#EAF2EB] mb-4">
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <div className="text-[10px] uppercase tracking-wider text-[#6B7A72] font-semibold">Tapering Readiness</div>
+                  <div className="text-3xl font-bold tabular-nums text-[#0D1F16]" style={{ fontFamily: 'var(--font-fraunces)', fontVariantNumeric: 'tabular-nums' }}>
+                    {currentScore}<span className="text-[#6B7A72] text-xl font-normal">/{totalItems}</span>
+                  </div>
+                </div>
+                <div className={`text-sm font-semibold ${taperUnlocked ? 'text-[#1F4B32]' : 'text-[#C4742B]'}`}>
+                  {taperUnlocked ? (hasOverride ? 'Override active' : 'Ready') : 'Not yet ready'}
+                </div>
+              </div>
+              <div className="h-2 bg-[#F5F8F3] rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-[#1F4B32] to-[#7FFFA4] transition-all duration-500 rounded-full"
+                  style={{ width: `${(currentScore / totalItems) * 100}%` }}
+                />
+              </div>
+              <p className="text-xs text-[#6B7A72] mt-2">
+                {taperUnlocked
+                  ? 'You can generate your tapering plan below.'
+                  : `Complete ${MIN_READINESS - currentScore} more criteria to unlock plan generation.`
+                }
+              </p>
+            </div>
+
             <div ref={chatRef} className="flex-1 overflow-y-auto space-y-3 mb-4">
               {chatMessages.length === 0 && (
                 <div className="text-center py-8">
@@ -769,14 +822,14 @@ export default function Maintenance() {
                   <p className="text-sm font-semibold text-[#0D1F16]">Ask Trish, your transition coach</p>
                   <p className="text-xs text-[#6B7A72] mt-1 max-w-xs mx-auto">Direct, data-driven plans for tapering, nutrition, exercise, and maintaining your results.</p>
                   <div className="flex flex-wrap justify-center gap-2 mt-4">
-                    {[
-                      'Generate my tapering plan',
+                    {([
+                      ...(taperUnlocked ? ['Generate my tapering plan'] : []),
                       'Make me a weekly meal plan',
                       'Create an exercise plan for me',
                       'Am I ready to start tapering?',
                       "I'm gaining weight — what do I do?",
                       'Give me a high-protein recipe',
-                    ].map(q => (
+                    ] as string[]).map(q => (
                       <button key={q} onClick={() => sendChat(q)}
                         className="text-xs px-3 py-2 rounded-full border border-[#EAF2EB] text-[#6B7A72] cursor-pointer hover:border-[#1F4B32] hover:text-[#1F4B32] transition-all duration-300">
                         {q}
@@ -838,6 +891,43 @@ export default function Maintenance() {
           </div>
         )}
       </div>
+
+      {/* Override confirmation modal */}
+      <AnimatePresence>
+        {showOverrideConfirm && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/40 z-50"
+              onClick={() => setShowOverrideConfirm(false)}
+            />
+            <motion.div
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              transition={{ type: 'spring', bounce: 0.15, duration: 0.4 }}
+              className="fixed bottom-0 left-0 right-0 bg-white rounded-t-3xl z-50 p-6 pb-10 max-w-2xl mx-auto shadow-[0_-8px_32px_rgba(0,0,0,0.15)]"
+            >
+              <h3 className="text-base font-bold text-[#0D1F16] mb-2">Skip readiness assessment?</h3>
+              <p className="text-sm text-[#6B7A72] leading-relaxed mb-5">
+                This will skip the readiness assessment. Use this only if you're already mid-taper and joined NovuraHealth later. Your provider should be aware of your tapering plan.
+              </p>
+              <div className="flex gap-3">
+                <button onClick={() => setShowOverrideConfirm(false)}
+                  className="flex-1 py-3 rounded-2xl text-sm font-semibold border border-[#EAF2EB] text-[#6B7A72] cursor-pointer hover:bg-[#F5F8F3] transition-all duration-300">
+                  Cancel
+                </button>
+                <button onClick={activateOverride}
+                  className="flex-1 py-3 rounded-2xl text-sm font-semibold bg-gradient-to-r from-[#C4742B] to-[#D4843B] text-white cursor-pointer hover:shadow-[0_4px_16px_-4px_rgba(196,116,43,0.4)] transition-all duration-300">
+                  Continue — Skip Assessment
+                </button>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
 
       <BottomNav />
     </div>
