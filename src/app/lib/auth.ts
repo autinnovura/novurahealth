@@ -12,7 +12,17 @@ export async function getAuthedUser() {
         getAll() {
           return cookieStore.getAll()
         },
-        setAll() {},
+        setAll(cookiesToSet) {
+          try {
+            for (const { name, value, options } of cookiesToSet) {
+              cookieStore.set(name, value, options)
+            }
+          } catch {
+            // setAll is called from Server Components where cookies
+            // are read-only. The middleware or next request will pick
+            // up the refreshed token instead.
+          }
+        },
       },
     }
   )
@@ -21,7 +31,7 @@ export async function getAuthedUser() {
 }
 
 export function unauthorized() {
-  return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  return NextResponse.json({ error: 'Unauthorized', message: 'Session expired. Please refresh the page.' }, { status: 401 })
 }
 
 export function forbidden() {
