@@ -128,7 +128,7 @@ function Chat() {
   }
 
   return (
-    <div className="min-h-screen bg-[#FAFAF7] flex flex-col pb-24" style={{ fontFamily: 'var(--font-inter)' }}>
+    <div className="min-h-screen bg-[#FAFAF7] flex flex-col" style={{ fontFamily: 'var(--font-inter)', paddingBottom: 'calc(6rem + env(safe-area-inset-bottom))' }}>
       {/* Header */}
       <header className="relative overflow-hidden shrink-0">
         <div className="absolute inset-0 bg-gradient-to-br from-white via-[#F5F8F3] to-[#EAF2EB]" />

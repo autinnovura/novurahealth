@@ -587,7 +587,7 @@ export default function Dashboard() {
   const nextInjDayName = daysUntilInj !== null ? (daysUntilInj === 0 ? 'Today' : daysUntilInj === 1 ? 'Tomorrow' : new Date(Date.now() + daysUntilInj * 86400000).toLocaleDateString('en-US', { weekday: 'short' })) : '—'
 
   return (
-    <div className="min-h-screen bg-[#FAFAF7] pb-24" style={{ fontFamily: 'var(--font-inter)' }} onClick={() => medMenuId && setMedMenuId(null)}>
+    <div className="min-h-screen bg-[#FAFAF7]" style={{ fontFamily: 'var(--font-inter)', paddingBottom: 'calc(6rem + env(safe-area-inset-bottom))' }} onClick={() => medMenuId && setMedMenuId(null)}>
       {showFirstRun && userId && profile && (
         <FirstRunModal
           userId={userId}

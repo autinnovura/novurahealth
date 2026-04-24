@@ -18,7 +18,10 @@ export default function BottomNav() {
   const pathname = usePathname()
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 bg-white/80 backdrop-blur-xl border-t border-[#EAF2EB] px-4 py-2.5 flex justify-around z-50">
+    <nav
+      className="fixed bottom-0 left-0 right-0 bg-white/80 backdrop-blur-xl border-t border-[#EAF2EB] px-4 pt-2.5 flex justify-around z-50"
+      style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 0.625rem)' }}
+    >
       {NAV_ITEMS.map(item => {
         const active = pathname === item.href
         return (

@@ -410,7 +410,7 @@ export default function Maintenance() {
   const taperUnlocked = currentScore >= MIN_READINESS || hasOverride
 
   return (
-    <div className="min-h-screen bg-[#FAFAF7] pb-24" style={{ fontFamily: 'var(--font-inter)' }}>
+    <div className="min-h-screen bg-[#FAFAF7]" style={{ fontFamily: 'var(--font-inter)', paddingBottom: 'calc(6rem + env(safe-area-inset-bottom))' }}>
       {/* Header */}
       <header className="bg-gradient-to-br from-[#1F4B32] via-[#2D6B45] to-[#1F4B32] px-5 pt-5 pb-6">
         <div className="max-w-2xl mx-auto">
