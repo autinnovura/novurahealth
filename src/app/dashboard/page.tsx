@@ -13,11 +13,10 @@ import { format } from 'date-fns'
 import ChartTooltip from '../components/ui/ChartTooltip'
 import {
   Utensils, Syringe, Scale, Dumbbell, Stethoscope,
-  Droplets, ChevronLeft, ChevronRight, Plus, LogOut,
-  Flame, Sparkles, TrendingUp, MessageCircle
+  Droplets, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Plus, LogOut,
+  Flame, Sparkles, TrendingUp
 } from 'lucide-react'
 import BottomNav from '../components/BottomNav'
-import StreakCalendar from '../components/StreakCalendar'
 import { getDosesForBrand } from '../lib/medications'
 import { localDateKey } from '../lib/dates'
 
@@ -108,25 +107,6 @@ function ProgressRing({ percent, size = 80, stroke = 6 }: { percent: number; siz
   )
 }
 
-// ── Water Glass Visual ────────────────────────────────
-function WaterGlass({ current, target }: { current: number; target: number }) {
-  const pct = Math.min(100, (current / target) * 100)
-  return (
-    <div className="relative w-10 h-14 mx-auto">
-      <div className="absolute inset-0 rounded-b-lg border-2 border-[#B8D4E8] border-t-0 overflow-hidden"
-        style={{ borderTopLeftRadius: '2px', borderTopRightRadius: '2px' }}>
-        <motion.div
-          className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-[#4A90D9] to-[#7BBFEA]"
-          initial={{ height: '0%' }}
-          animate={{ height: `${pct}%` }}
-          transition={{ duration: 1, ease: [0.16, 1, 0.3, 1], delay: 0.4 }}
-        />
-      </div>
-      <div className="absolute -top-0.5 left-0 right-0 h-1 border-2 border-b-0 border-[#B8D4E8] rounded-t-sm" />
-    </div>
-  )
-}
-
 // ── Skeleton Shimmer ──────────────────────────────────
 function Skeleton({ className }: { className?: string }) {
   return <div className={`animate-pulse rounded-2xl bg-gradient-to-r from-[#EAF2EB] via-[#F5F8F3] to-[#EAF2EB] bg-[length:200%_100%] ${className}`} />
@@ -156,7 +136,7 @@ export default function Dashboard() {
   const [dateWaterLogs, setDateWaterLogs] = useState<WaterLog[]>([])
 
   // Modals
-  const [modal, setModal] = useState<'food' | 'med' | 'weight' | 'sideEffect' | 'checkin' | 'exercise' | null>(null)
+  const [modal, setModal] = useState<'food' | 'med' | 'weight' | 'water' | 'sideEffect' | 'checkin' | 'exercise' | null>(null)
 
   // Form states
   const [injectionSite, setInjectionSite] = useState('')
@@ -184,6 +164,10 @@ export default function Dashboard() {
   const [isSaving, setIsSaving] = useState(false)
   const [calendarRefreshKey, setCalendarRefreshKey] = useState(0)
   const [medMenuId, setMedMenuId] = useState<string | null>(null)
+  const [medChartCollapsed, setMedChartCollapsed] = useState(() => {
+    if (typeof window !== 'undefined') return localStorage.getItem('novura_medchart_collapsed') === 'true'
+    return true
+  })
   const [editingMed, setEditingMed] = useState<MedLog | null>(null)
   const [editMedDose, setEditMedDose] = useState('')
   const [editMedSite, setEditMedSite] = useState('')
@@ -599,8 +583,6 @@ export default function Dashboard() {
   }
 
   // Next injection day name
-  const nextInjDayName = daysUntilInj !== null ? (daysUntilInj === 0 ? 'Today' : daysUntilInj === 1 ? 'Tomorrow' : new Date(Date.now() + daysUntilInj * 86400000).toLocaleDateString('en-US', { weekday: 'short' })) : '—'
-
   return (
     <div className="min-h-screen bg-[#FAFAF7]" style={{ fontFamily: 'var(--font-inter)', paddingBottom: 'calc(6rem + env(safe-area-inset-bottom))' }} onClick={() => medMenuId && setMedMenuId(null)}>
       {showFirstRun && userId && profile && (
@@ -672,217 +654,170 @@ export default function Dashboard() {
 
         {/* ══════════ OVERVIEW ══════════ */}
         {activeTab === 'overview' && (<>
-          {/* Injection reminder */}
-          {daysUntilInj !== null && daysUntilInj <= 1 && (
-            <motion.div variants={fadeUp} className="bg-gradient-to-r from-[#FFF8F0] to-[#FFF4E8] border border-[#C4742B]/10 rounded-3xl p-5 flex items-center gap-4 shadow-[0_4px_24px_-8px_rgba(196,116,43,0.08)]">
-              <div className="w-12 h-12 rounded-2xl bg-[#C4742B]/10 flex items-center justify-center shrink-0">
-                <Syringe className="w-5 h-5 text-[#C4742B]" />
-              </div>
-              <div className="flex-1">
-                <p className="text-sm font-semibold text-[#0D1F16]">{daysUntilInj === 0 ? 'Injection day' : 'Injection tomorrow'}</p>
-                <p className="text-xs text-[#8B7355] mt-0.5">Suggested site: {nextSite}</p>
-              </div>
-              <button onClick={() => { setInjectionSite(nextSite); setModal('med') }} className="bg-[#C4742B] text-white px-5 py-2.5 rounded-2xl text-xs font-semibold cursor-pointer hover:shadow-[0_4px_16px_-4px_rgba(196,116,43,0.4)] transition-all duration-300">Log</button>
-            </motion.div>
-          )}
 
-          {/* Check-in prompt */}
-          {!todayCheckin && (
-            <motion.button variants={fadeUp} onClick={() => setModal('checkin')} className="w-full bg-white border border-[#EAF2EB] rounded-3xl p-5 flex items-center gap-4 hover:-translate-y-0.5 hover:shadow-[0_8px_32px_-8px_rgba(31,75,50,0.1)] transition-all duration-300 cursor-pointer text-left">
-              <div className="w-10 h-10 rounded-2xl bg-[#EAF2EB] flex items-center justify-center">
-                <Sparkles className="w-5 h-5 text-[#1F4B32]" />
-              </div>
-              <div className="flex-1"><p className="text-sm font-semibold text-[#0D1F16]">How are you feeling?</p><p className="text-xs text-[#6B7A72]">Quick mood & energy check-in</p></div>
-              <ChevronRight className="w-4 h-4 text-[#6B7A72]/30" />
-            </motion.button>
-          )}
+          {/* ── TIER 1: Above the fold ──────────────────── */}
 
-          {/* HERO — Weight Progress Card */}
-          <motion.div variants={fadeUp} className="bg-white rounded-3xl p-6 shadow-[0_4px_24px_-8px_rgba(31,75,50,0.08)] border border-[#EAF2EB]">
-            <div className="flex items-start justify-between">
+          {/* Hero stat */}
+          <motion.div variants={fadeUp} className="bg-white rounded-3xl p-5 shadow-[0_4px_24px_-8px_rgba(31,75,50,0.08)] border border-[#EAF2EB]">
+            <div className="flex items-center justify-between">
               <div>
                 <p className="text-[10px] font-semibold text-[#6B7A72] uppercase tracking-wider">Current Weight</p>
-                <p className="text-[48px] font-bold text-[#0D1F16] leading-none mt-1 tracking-[-0.02em]" style={{ fontVariantNumeric: 'tabular-nums' }}>
-                  {latestWeight ?? '—'}
+                <p className="text-[40px] font-bold text-[#0D1F16] leading-none mt-1 tracking-[-0.02em]" style={{ fontFamily: 'var(--font-fraunces)', fontVariantNumeric: 'tabular-nums' }}>
+                  {latestWeight ?? '—'}<span className="text-lg font-normal text-[#6B7A72] ml-1">lbs</span>
                 </p>
-                <p className="text-xs text-[#6B7A72] mt-0.5">lbs</p>
                 {weightLost !== null && weightLost > 0 && (
-                  <p className="text-sm font-semibold text-[#7FFFA4] mt-2 flex items-center gap-1">
-                    <TrendingUp className="w-3.5 h-3.5" />
-                    <span className="text-[#1F4B32]">{weightLost} lbs lost{daysOnMed ? ` in ${daysOnMed} days` : ''}</span>
+                  <p className="text-xs font-semibold text-[#1F4B32] mt-1 flex items-center gap-1">
+                    <TrendingUp className="w-3 h-3 text-[#7FFFA4]" />
+                    {weightLost} lbs lost{daysOnMed ? ` in ${daysOnMed} days` : ''}
                   </p>
                 )}
               </div>
               {progressPct !== null && (
                 <div className="relative">
-                  <ProgressRing percent={progressPct} size={80} stroke={6} />
+                  <ProgressRing percent={progressPct} size={72} stroke={5} />
                   <div className="absolute inset-0 flex items-center justify-center">
-                    <span className="text-sm font-bold text-[#1F4B32]" style={{ fontVariantNumeric: 'tabular-nums' }}>{progressPct}%</span>
+                    <span className="text-xs font-bold text-[#1F4B32]" style={{ fontVariantNumeric: 'tabular-nums' }}>{progressPct}%</span>
                   </div>
                 </div>
               )}
             </div>
-            {sparklineData.length >= 2 && (
-              <div className="mt-4 -mx-2 h-20">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={sparklineData}>
-                    <defs>
-                      <linearGradient id="sparkGrad" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#7FFFA4" stopOpacity={0.3} />
-                        <stop offset="100%" stopColor="#7FFFA4" stopOpacity={0} />
-                      </linearGradient>
-                    </defs>
-                    <YAxis hide domain={['dataMin - 2', 'dataMax + 2']} />
-                    <Tooltip
-                      content={
-                        <ChartTooltip>
-                          {(data) => {
-                            const changeFromPrev = data.changeFromPrev as number | undefined
-                            const changeColor = changeFromPrev !== undefined && changeFromPrev < 0 ? 'text-[#1F4B32]' : changeFromPrev !== undefined && changeFromPrev > 0 ? 'text-red-600' : 'text-[#6B7A72]'
-                            return (
-                              <>
-                                <div className="text-xs text-[#6B7A72] uppercase tracking-wider font-semibold mb-1">
-                                  {data.date ? format(new Date(data.date as string), 'MMM d, yyyy') : ''}
-                                </div>
-                                <div className="text-2xl font-bold tabular-nums text-[#1F4B32]">
-                                  {data.weight as number}<span className="text-sm text-[#6B7A72] ml-1">lbs</span>
-                                </div>
-                                {changeFromPrev !== undefined && (
-                                  <div className={`text-xs font-semibold mt-1 ${changeColor}`}>
-                                    {changeFromPrev > 0 ? '+' : ''}{changeFromPrev.toFixed(1)} from last log
-                                  </div>
-                                )}
-                                {data.changeFromStart !== undefined && (
-                                  <div className="text-xs text-[#6B7A72] mt-0.5">
-                                    {(data.changeFromStart as number) > 0 ? '+' : ''}{(data.changeFromStart as number).toFixed(1)} total
-                                  </div>
-                                )}
-                              </>
-                            )
-                          }}
-                        </ChartTooltip>
-                      }
-                      cursor={{ stroke: '#7FFFA4', strokeWidth: 1, strokeDasharray: '3 3' }}
-                      wrapperStyle={{ outline: 'none' }}
-                    />
-                    <Area type="monotone" dataKey="weight" stroke="#1F4B32" strokeWidth={2} fill="url(#sparkGrad)" dot={false} activeDot={{ r: 6, fill: '#7FFFA4', stroke: '#1F4B32', strokeWidth: 2 }} />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </div>
-            )}
-            {goalWeight && (
-              <div className="flex items-center justify-between mt-2 text-[10px] text-[#6B7A72]">
-                <span>Start: {startWeight} lbs</span>
-                <span>Goal: {goalWeight} lbs</span>
-              </div>
-            )}
           </motion.div>
 
-          {/* Secondary stat tiles */}
-          <motion.div variants={fadeUp} className="grid grid-cols-3 gap-3">
-            {/* Protein */}
-            <div className="bg-white rounded-3xl p-4 shadow-[0_4px_24px_-8px_rgba(31,75,50,0.08)] border border-[#EAF2EB] hover:-translate-y-0.5 hover:shadow-[0_8px_32px_-8px_rgba(31,75,50,0.15)] transition-all duration-300">
-              <p className="text-[10px] font-semibold text-[#6B7A72] uppercase tracking-wider">Protein</p>
-              <p className="text-xl font-bold text-[#1F4B32] mt-1" style={{ fontVariantNumeric: 'tabular-nums' }}>{todayP}<span className="text-[10px] font-normal text-[#6B7A72]">/{proteinTarget??'—'}g</span></p>
-              {proteinTarget && (
-                <div className="h-1.5 bg-[#EAF2EB] rounded-full mt-2 overflow-hidden">
-                  <motion.div
-                    className="h-full rounded-full"
-                    style={{ background: todayP >= proteinTarget ? 'linear-gradient(90deg, #7FFFA4, #1F4B32)' : '#1F4B32' }}
-                    initial={{ width: 0 }}
-                    animate={{ width: `${Math.min(100,(todayP/proteinTarget)*100)}%` }}
-                    transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1], delay: 0.5 }}
-                  />
-                </div>
-              )}
-            </div>
-
-            {/* Water */}
-            <div className="bg-white rounded-3xl p-4 shadow-[0_4px_24px_-8px_rgba(31,75,50,0.08)] border border-[#EAF2EB] hover:-translate-y-0.5 hover:shadow-[0_8px_32px_-8px_rgba(31,75,50,0.15)] transition-all duration-300">
-              <p className="text-[10px] font-semibold text-[#6B7A72] uppercase tracking-wider">Water</p>
-              <WaterGlass current={todayWater} target={waterTarget} />
-              <p className="text-center text-xs font-bold text-[#4A90D9] mt-1.5" style={{ fontVariantNumeric: 'tabular-nums' }}>{todayWater}<span className="text-[10px] font-normal text-[#6B7A72]">/{waterTarget}oz</span></p>
-            </div>
-
-            {/* Next injection */}
-            <div className="bg-white rounded-3xl p-4 shadow-[0_4px_24px_-8px_rgba(31,75,50,0.08)] border border-[#EAF2EB] hover:-translate-y-0.5 hover:shadow-[0_8px_32px_-8px_rgba(31,75,50,0.15)] transition-all duration-300">
-              <p className="text-[10px] font-semibold text-[#6B7A72] uppercase tracking-wider">Next Dose</p>
-              <p className="text-3xl font-bold text-[#0D1F16] mt-1" style={{ fontVariantNumeric: 'tabular-nums' }}>{daysUntilInj ?? '—'}</p>
-              <p className="text-[10px] text-[#6B7A72]">{daysUntilInj !== null ? (daysUntilInj === 1 ? 'day' : 'days') : ''} · {nextInjDayName}</p>
+          {/* Quick log chips — THE PRIMARY ACTION */}
+          <motion.div variants={fadeUp} className="bg-white rounded-3xl p-4 shadow-[0_4px_24px_-8px_rgba(31,75,50,0.08)] border border-[#EAF2EB]">
+            <p className="text-[10px] font-semibold text-[#6B7A72] uppercase tracking-wider mb-3 px-1">Quick log</p>
+            <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+              {[
+                { label: 'Food', action: () => setModal('food'), bg: 'bg-amber-50', iconColor: 'text-amber-600', Icon: Utensils },
+                { label: 'Injection', action: () => { setInjectionSite(nextSite); setModal('med') }, bg: 'bg-[#EAF2EB]', iconColor: 'text-[#1F4B32]', Icon: Syringe },
+                { label: 'Weight', action: () => setModal('weight'), bg: 'bg-blue-50', iconColor: 'text-blue-600', Icon: Scale },
+                { label: 'Water', action: () => setModal('water' as any), bg: 'bg-cyan-50', iconColor: 'text-cyan-600', Icon: Droplets },
+                { label: 'Exercise', action: () => setModal('exercise'), bg: 'bg-purple-50', iconColor: 'text-purple-600', Icon: Dumbbell },
+                { label: 'Symptom', action: () => setModal('sideEffect'), bg: 'bg-pink-50', iconColor: 'text-pink-600', Icon: Stethoscope },
+              ].map(({ label, action, bg, iconColor, Icon }) => (
+                <button key={label} onClick={action}
+                  className="flex flex-col items-center gap-2 p-3 rounded-2xl hover:bg-[#FAFAF7] active:scale-95 transition-all duration-200 cursor-pointer">
+                  <div className={`w-12 h-12 rounded-full ${bg} flex items-center justify-center`}>
+                    <Icon className={`w-5 h-5 ${iconColor}`} strokeWidth={1.5} />
+                  </div>
+                  <span className="text-xs font-medium text-[#0D1F16]">{label}</span>
+                </button>
+              ))}
             </div>
           </motion.div>
 
-          {/* "What should I eat?" CTA */}
-          <motion.a variants={fadeUp} href="/chat?prompt=What+should+I+eat+right+now%3F"
-            className="block bg-gradient-to-r from-[#1F4B32] to-[#2D6B45] text-white font-semibold py-4 px-6 rounded-3xl text-center text-sm hover:shadow-[0_8px_32px_-8px_rgba(31,75,50,0.4)] transition-all duration-300 hover:-translate-y-0.5">
-            <Utensils className="w-4 h-4 inline-block mr-2 -mt-0.5" /> What should I eat?
-          </motion.a>
-
-          {/* Protein suggestion */}
-          {proteinRem !== null && proteinRem > 0 && (
-            <motion.div variants={fadeUp} className="bg-gradient-to-r from-[#EAF2EB] to-[#F0F7F2] rounded-3xl px-5 py-3.5 border border-[#EAF2EB]">
-              <p className="text-xs text-[#1F4B32] font-medium">{getProteinSuggestion(proteinRem)}</p>
+          {/* Next shot countdown — conditional, only when <48h */}
+          {daysUntilInj !== null && daysUntilInj <= 2 && (
+            <motion.div variants={fadeUp}
+              className={`rounded-3xl p-4 flex items-center gap-4 ${
+                daysUntilInj === 0 && daysSinceInj !== null && daysSinceInj >= 7
+                  ? 'bg-gradient-to-r from-[#FFF4E8] to-[#FFF8F0] border border-amber-200'
+                  : 'bg-gradient-to-r from-[#FFF8F0] to-[#FFF4E8] border border-[#C4742B]/10'
+              } shadow-[0_4px_24px_-8px_rgba(196,116,43,0.08)]`}>
+              <div className="w-10 h-10 rounded-2xl bg-[#C4742B]/10 flex items-center justify-center shrink-0">
+                <Syringe className="w-4 h-4 text-[#C4742B]" />
+              </div>
+              <div className="flex-1">
+                <p className="text-sm font-semibold text-[#0D1F16]">
+                  {daysSinceInj !== null && daysSinceInj >= 8 ? 'Injection overdue' : daysUntilInj === 0 ? 'Injection day' : daysUntilInj === 1 ? 'Injection tomorrow' : `Next shot in ${daysUntilInj} days`}
+                </p>
+                <p className="text-xs text-[#8B7355] mt-0.5">Suggested site: {nextSite}</p>
+              </div>
+              <button onClick={() => { setInjectionSite(nextSite); setModal('med') }}
+                className="bg-[#C4742B] text-white px-4 py-2 rounded-2xl text-xs font-semibold cursor-pointer hover:shadow-[0_4px_16px_-4px_rgba(196,116,43,0.4)] transition-all duration-300">Log</button>
             </motion.div>
           )}
 
-          {/* Weekly summary */}
-          <motion.div variants={fadeUp} className="bg-white rounded-3xl p-6 shadow-[0_4px_24px_-8px_rgba(31,75,50,0.08)] border border-[#EAF2EB]">
-            <p className="text-[10px] font-semibold text-[#6B7A72] uppercase tracking-wider mb-4">This Week</p>
-            <div className="grid grid-cols-4 gap-2 text-center">
-              <div><p className="text-lg font-bold text-[#0D1F16]" style={{ fontVariantNumeric: 'tabular-nums' }}>{avgDailyCal}</p><p className="text-[9px] text-[#6B7A72]">avg cal/day</p></div>
-              <div><p className="text-lg font-bold text-[#1F4B32]" style={{ fontVariantNumeric: 'tabular-nums' }}>{avgDailyP}g</p><p className="text-[9px] text-[#6B7A72]">avg protein</p></div>
-              <div><p className="text-lg font-bold text-[#C4742B]" style={{ fontVariantNumeric: 'tabular-nums' }}>{proteinHitDays}/{daysThisWeek}</p><p className="text-[9px] text-[#6B7A72]">protein days</p></div>
-              <div><p className="text-lg font-bold text-[#4A90D9]" style={{ fontVariantNumeric: 'tabular-nums' }}>{exerciseLogs.filter(e => new Date(e.logged_at) >= weekStart).length}</p><p className="text-[9px] text-[#6B7A72]">workouts</p></div>
-            </div>
-          </motion.div>
+          {/* Check-in prompt — only if not done today */}
+          {!todayCheckin && (
+            <motion.button variants={fadeUp} onClick={() => setModal('checkin')} className="w-full bg-white border border-[#EAF2EB] rounded-3xl p-4 flex items-center gap-3 hover:-translate-y-0.5 hover:shadow-[0_8px_32px_-8px_rgba(31,75,50,0.1)] transition-all duration-300 cursor-pointer text-left">
+              <div className="w-9 h-9 rounded-xl bg-[#EAF2EB] flex items-center justify-center">
+                <Sparkles className="w-4 h-4 text-[#1F4B32]" />
+              </div>
+              <div className="flex-1"><p className="text-sm font-medium text-[#0D1F16]">How are you feeling?</p><p className="text-[11px] text-[#6B7A72]">Quick mood & energy check-in</p></div>
+              <ChevronRight className="w-4 h-4 text-[#6B7A72]/30" />
+            </motion.button>
+          )}
 
-          {/* Water quick-add */}
-          <motion.div variants={fadeUp} className="bg-white rounded-3xl p-5 shadow-[0_4px_24px_-8px_rgba(31,75,50,0.08)] border border-[#EAF2EB]">
-            <p className="text-[10px] font-semibold text-[#6B7A72] uppercase tracking-wider mb-3">Quick Add Water</p>
-            <div className="flex gap-2">{WATER_AMOUNTS.map(oz => (
-              <button key={oz} onClick={() => logWater(oz)} className="flex-1 bg-[#EDF5FC] text-[#4A90D9] py-2.5 rounded-2xl text-xs font-semibold hover:bg-[#D8ECFA] hover:-translate-y-0.5 transition-all duration-300 cursor-pointer">+{oz}oz</button>
-            ))}</div>
-          </motion.div>
+          {/* ── TIER 2: Below the fold ──────────────────── */}
 
-          {/* Medication level chart */}
+          {/* Medication level chart — collapsible */}
           {profile?.medication && (
             <motion.div variants={fadeUp}>
-              <MedicationLevelChart
-                medication={profile.medication}
-                dose={profile.dose}
-                injectionLogs={medChartLogs || []}
-              />
+              {medChartCollapsed ? (
+                <button onClick={() => { setMedChartCollapsed(false); localStorage.setItem('novura_medchart_collapsed', 'false') }}
+                  className="w-full bg-white rounded-3xl p-4 shadow-[0_4px_24px_-8px_rgba(31,75,50,0.08)] border border-[#EAF2EB] flex items-center justify-between cursor-pointer hover:-translate-y-0.5 hover:shadow-[0_8px_32px_-8px_rgba(31,75,50,0.15)] transition-all duration-300">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-xl bg-[#EAF2EB] flex items-center justify-center">
+                      <Syringe className="w-4 h-4 text-[#1F4B32]" strokeWidth={1.5} />
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-[#0D1F16]">Medication Level</p>
+                      <p className="text-[11px] text-[#6B7A72]">{profile.medication} · {profile.dose}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-[#1F4B32] font-semibold bg-[#EAF2EB] px-2.5 py-1 rounded-full">Show chart</span>
+                    <ChevronDown className="w-4 h-4 text-[#6B7A72]" />
+                  </div>
+                </button>
+              ) : (
+                <div className="relative">
+                  <MedicationLevelChart
+                    medication={profile.medication}
+                    dose={profile.dose}
+                    injectionLogs={medChartLogs || []}
+                  />
+                  <button onClick={() => { setMedChartCollapsed(true); localStorage.setItem('novura_medchart_collapsed', 'true') }}
+                    className="absolute top-4 right-4 p-1.5 rounded-lg bg-white/80 backdrop-blur-sm text-[#6B7A72] hover:text-[#0D1F16] cursor-pointer transition-all duration-300 z-10">
+                    <ChevronUp className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
             </motion.div>
           )}
 
-          {/* Quick actions — glassmorphic pills */}
-          <motion.div variants={fadeUp} className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-hide">
-            {[
-              { icon: Utensils, label: 'Food', action: () => setModal('food'), bg: 'bg-orange-50', iconColor: 'text-orange-500', ringColor: 'ring-orange-100' },
-              { icon: Syringe, label: 'Injection', action: () => setModal('med'), bg: 'bg-emerald-50', iconColor: 'text-emerald-600', ringColor: 'ring-emerald-100' },
-              { icon: Scale, label: 'Weight', action: () => setModal('weight'), bg: 'bg-slate-50', iconColor: 'text-slate-600', ringColor: 'ring-slate-100' },
-              { icon: Dumbbell, label: 'Exercise', action: () => setModal('exercise'), bg: 'bg-blue-50', iconColor: 'text-blue-500', ringColor: 'ring-blue-100' },
-              { icon: Stethoscope, label: 'Symptom', action: () => setModal('sideEffect'), bg: 'bg-rose-50', iconColor: 'text-rose-500', ringColor: 'ring-rose-100' },
-            ].map(b => (
-              <button key={b.label} onClick={b.action}
-                className="flex items-center gap-2.5 bg-white/60 backdrop-blur-md border border-white rounded-2xl py-3 px-4 hover:-translate-y-0.5 hover:shadow-[0_4px_16px_-4px_rgba(31,75,50,0.1)] transition-all duration-300 cursor-pointer shrink-0">
-                <div className={`w-8 h-8 rounded-xl ${b.bg} ring-1 ${b.ringColor} flex items-center justify-center`}>
-                  <b.icon className={`w-4 h-4 ${b.iconColor}`} strokeWidth={1.5} />
+          {/* Today's macros — compact card */}
+          <motion.div variants={fadeUp} className="bg-white rounded-3xl p-5 shadow-[0_4px_24px_-8px_rgba(31,75,50,0.08)] border border-[#EAF2EB]">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-[10px] font-semibold text-[#6B7A72] uppercase tracking-wider">Today</p>
+              <button onClick={() => setActiveTab('nutrition')} className="text-[10px] text-[#1F4B32] font-semibold cursor-pointer hover:underline">Details</button>
+            </div>
+            <div className="space-y-3">
+              {/* Protein */}
+              <div>
+                <div className="flex justify-between text-xs mb-1">
+                  <span className="text-[#0D1F16] font-medium">Protein</span>
+                  <span className="text-[#6B7A72] tabular-nums">{todayP}{proteinTarget ? `/${proteinTarget}g` : 'g'}</span>
                 </div>
-                <span className="text-xs font-semibold text-[#0D1F16] whitespace-nowrap">{b.label}</span>
-              </button>
-            ))}
+                <div className="h-2 bg-[#EAF2EB] rounded-full overflow-hidden">
+                  <motion.div className="h-full rounded-full" style={{ background: proteinTarget && todayP >= proteinTarget ? 'linear-gradient(90deg, #7FFFA4, #1F4B32)' : '#1F4B32' }} initial={{ width: 0 }} animate={{ width: `${proteinTarget ? Math.min(100, (todayP / proteinTarget) * 100) : 0}%` }} transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1], delay: 0.3 }} />
+                </div>
+                {proteinRem !== null && proteinRem > 0 && (
+                  <p className="text-[11px] text-[#1F4B32] mt-1">{getProteinSuggestion(proteinRem)}</p>
+                )}
+              </div>
+              {/* Water */}
+              <div>
+                <div className="flex justify-between text-xs mb-1">
+                  <span className="text-[#0D1F16] font-medium">Water</span>
+                  <span className="text-[#6B7A72] tabular-nums">{todayWater}/{waterTarget}oz</span>
+                </div>
+                <div className="h-2 bg-[#EDF5FC] rounded-full overflow-hidden">
+                  <motion.div className="h-full rounded-full bg-gradient-to-r from-[#7BBFEA] to-[#4A90D9]" initial={{ width: 0 }} animate={{ width: `${Math.min(100, (todayWater / waterTarget) * 100)}%` }} transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1], delay: 0.4 }} />
+                </div>
+              </div>
+              {/* Calories */}
+              <div className="flex justify-between text-xs">
+                <span className="text-[#0D1F16] font-medium">Calories</span>
+                <span className="text-[#6B7A72] tabular-nums">{todayFoodLogs.reduce((s, f) => s + f.calories, 0)} cal</span>
+              </div>
+            </div>
           </motion.div>
 
-          {/* Streak calendar */}
+          {/* Recent activity feed — 5 items */}
           <motion.div variants={fadeUp} className="bg-white rounded-3xl p-5 shadow-[0_4px_24px_-8px_rgba(31,75,50,0.08)] border border-[#EAF2EB]">
-            <p className="text-[10px] font-semibold text-[#6B7A72] uppercase tracking-wider mb-3">Logging Streak</p>
-            {userId && <StreakCalendar userId={userId} refreshKey={calendarRefreshKey} />}
-          </motion.div>
-
-          {/* Recent activity feed */}
-          <motion.div variants={fadeUp} className="bg-white rounded-3xl p-5 shadow-[0_4px_24px_-8px_rgba(31,75,50,0.08)] border border-[#EAF2EB]">
-            <p className="text-[10px] font-semibold text-[#6B7A72] uppercase tracking-wider mb-4">Recent Activity</p>
+            <p className="text-[10px] font-semibold text-[#6B7A72] uppercase tracking-wider mb-3">Recent Activity</p>
             {activityFeed.length === 0 ? (
               <div className="text-center py-6">
                 <p className="text-sm text-[#6B7A72]">Nothing logged yet this week.</p>
@@ -890,11 +825,11 @@ export default function Dashboard() {
               </div>
             ) : (
               <div className="space-y-0">
-                {activityFeed.map((item, i) => {
+                {activityFeed.slice(0, 5).map((item, i, arr) => {
                   const config = activityConfig[item.type]
                   const Icon = config.icon
                   return (
-                    <div key={i} className={`flex items-center justify-between py-3 ${i < activityFeed.length - 1 ? 'border-b border-[#EAF2EB]' : ''}`}>
+                    <div key={i} className={`flex items-center justify-between py-2.5 ${i < arr.length - 1 ? 'border-b border-[#EAF2EB]' : ''}`}>
                       <div className="flex items-center gap-3 min-w-0 flex-1">
                         <div className={`w-8 h-8 rounded-full ${config.bg} flex items-center justify-center shrink-0`}>
                           <Icon className={`w-4 h-4 ${config.iconColor}`} strokeWidth={1.5} />
@@ -908,24 +843,21 @@ export default function Dashboard() {
               </div>
             )}
           </motion.div>
-
-          {/* Chat with Nova */}
-          <motion.a variants={fadeUp} href="/chat" className="block bg-white border border-[#EAF2EB] rounded-3xl p-5 hover:-translate-y-0.5 hover:shadow-[0_8px_32px_-8px_rgba(31,75,50,0.15)] transition-all duration-300">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-[#1F4B32] to-[#2D6B45] flex items-center justify-center shrink-0 shadow-[0_4px_12px_-4px_rgba(31,75,50,0.3)]">
-                <MessageCircle className="w-5 h-5 text-[#7FFFA4]" strokeWidth={1.5} />
-              </div>
-              <div className="flex-1">
-                <p className="text-sm font-semibold text-[#0D1F16]">Chat with Nova</p>
-                <p className="text-xs text-[#6B7A72]">Coaching, meal ideas, side effect help</p>
-              </div>
-              <ChevronRight className="w-4 h-4 text-[#6B7A72]/30" />
-            </div>
-          </motion.a>
         </>)}
 
         {/* ══════════ NUTRITION ══════════ */}
         {activeTab === 'nutrition' && (<>
+          {/* Weekly summary */}
+          <motion.div variants={fadeUp} className="bg-white rounded-3xl p-5 shadow-[0_4px_24px_-8px_rgba(31,75,50,0.08)] border border-[#EAF2EB]">
+            <p className="text-[10px] font-semibold text-[#6B7A72] uppercase tracking-wider mb-3">This Week</p>
+            <div className="grid grid-cols-4 gap-2 text-center">
+              <div><p className="text-lg font-bold text-[#0D1F16]" style={{ fontVariantNumeric: 'tabular-nums' }}>{avgDailyCal}</p><p className="text-[9px] text-[#6B7A72]">avg cal/day</p></div>
+              <div><p className="text-lg font-bold text-[#1F4B32]" style={{ fontVariantNumeric: 'tabular-nums' }}>{avgDailyP}g</p><p className="text-[9px] text-[#6B7A72]">avg protein</p></div>
+              <div><p className="text-lg font-bold text-[#C4742B]" style={{ fontVariantNumeric: 'tabular-nums' }}>{proteinHitDays}/{daysThisWeek}</p><p className="text-[9px] text-[#6B7A72]">protein days</p></div>
+              <div><p className="text-lg font-bold text-[#4A90D9]" style={{ fontVariantNumeric: 'tabular-nums' }}>{exerciseLogs.filter(e => new Date(e.logged_at) >= weekStart).length}</p><p className="text-[9px] text-[#6B7A72]">workouts</p></div>
+            </div>
+          </motion.div>
+
           {/* View toggle + date nav */}
           <motion.div variants={fadeUp} className="bg-white border border-[#EAF2EB] rounded-3xl p-4 shadow-[0_4px_24px_-8px_rgba(31,75,50,0.08)]">
             <div className="flex gap-1 mb-3 bg-[#F5F8F3] rounded-2xl p-1">
@@ -1317,6 +1249,22 @@ export default function Dashboard() {
             <div><label className="text-[9px] font-semibold text-[#6B7A72] uppercase tracking-wider">Minutes</label><input type="number" autoComplete="off" value={exerciseDuration} onChange={e => setExerciseDuration(e.target.value)} placeholder="30" className="w-full px-4 py-3 rounded-2xl border border-[#EAF2EB] text-sm text-[#0D1F16] outline-none focus:border-[#4A90D9] transition-all duration-300"/></div>
             <input type="text" autoComplete="off" value={exerciseNotes} onChange={e => setExerciseNotes(e.target.value)} placeholder="Notes (optional)" className="w-full px-4 py-3 rounded-2xl border border-[#EAF2EB] text-sm text-[#0D1F16] outline-none placeholder:text-[#6B7A72]/40 transition-all duration-300"/>
             <button onClick={logExercise} disabled={!exerciseType||!exerciseDuration||isSaving} className="w-full bg-[#4A90D9] text-white py-3.5 rounded-2xl text-sm font-semibold cursor-pointer disabled:opacity-30 hover:shadow-[0_4px_16px_-4px_rgba(74,144,217,0.4)] transition-all duration-300">Save</button>
+          </motion.div>
+        </div>
+      )}
+
+      {modal === 'water' && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-end sm:items-center justify-center z-50 px-4 pb-4" onClick={e => { if (e.target === e.currentTarget) setModal(null) }}>
+          <motion.div initial={{ opacity: 0, y: 40 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+            className="bg-white rounded-3xl w-full max-w-md p-6 space-y-4 shadow-[0_24px_80px_-16px_rgba(0,0,0,0.2)]">
+            <div className="flex justify-between items-center"><h2 className="text-base font-bold text-[#0D1F16]">Log Water</h2><button onClick={() => setModal(null)} className="w-8 h-8 rounded-xl bg-[#F5F8F3] flex items-center justify-center text-[#6B7A72] hover:bg-[#EAF2EB] cursor-pointer transition-all duration-300">✕</button></div>
+            <p className="text-sm text-[#6B7A72]">Today: <span className="font-semibold text-[#4A90D9]">{todayWater}/{waterTarget}oz</span></p>
+            <div className="grid grid-cols-2 gap-3">
+              {WATER_AMOUNTS.map(oz => (
+                <button key={oz} onClick={() => { logWater(oz); setModal(null) }}
+                  className="bg-[#EDF5FC] text-[#4A90D9] py-4 rounded-2xl text-base font-bold hover:bg-[#D8ECFA] hover:-translate-y-0.5 transition-all duration-300 cursor-pointer">+{oz}oz</button>
+              ))}
+            </div>
           </motion.div>
         </div>
       )}

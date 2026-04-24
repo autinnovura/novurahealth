@@ -5,8 +5,9 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '../lib/supabase'
 import { toast } from 'sonner'
 import DataImport from '../components/DataImport'
+import StreakCalendar from '../components/StreakCalendar'
 import BottomNav from '../components/BottomNav'
-import { ArrowLeft, ChevronRight, Download, Shield, AlertTriangle, User, Lock, Database, Syringe, Pill, Brain, Pin, PinOff, Pencil, Trash2, Plus, MessageCircle, X } from 'lucide-react'
+import { ArrowLeft, ChevronRight, Download, Shield, AlertTriangle, User, Lock, Database, Syringe, Pill, Brain, Pin, PinOff, Pencil, Trash2, Plus, MessageCircle, X, Flame } from 'lucide-react'
 import { getMedicationChoices, findMedicationByLabel } from '../lib/medications'
 
 interface Profile {
@@ -666,6 +667,17 @@ export default function Settings() {
 
         {/* ══════════ DATA ══════════ */}
         {activeSection === 'preferences' && (<>
+          {/* Logging Streak */}
+          {userId && (
+            <div className="bg-white border border-[#EAF2EB] rounded-3xl shadow-[0_4px_24px_-8px_rgba(31,75,50,0.08)] p-6 space-y-4">
+              <div className="flex items-center gap-2">
+                <Flame className="w-4 h-4 text-[#7FFFA4]" />
+                <h2 className="text-sm font-semibold text-[#0D1F16]" style={{ fontFamily: 'var(--font-fraunces)' }}>Your Journey</h2>
+              </div>
+              <StreakCalendar userId={userId} refreshKey={0} />
+            </div>
+          )}
+
           {/* Import */}
           {userId && <DataImport />}
 
