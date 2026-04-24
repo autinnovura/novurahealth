@@ -147,9 +147,12 @@ export default function Maintenance() {
   const [hasOverride, setHasOverride] = useState(false)
   const [showOverrideConfirm, setShowOverrideConfirm] = useState(false)
 
-  // Saved plans (localStorage)
-  const [savedMealPlans, setSavedMealPlans] = useState<string[]>([])
+  // Saved plans (from database)
+  const [savedMealPlans, setSavedMealPlans] = useState<any[]>([])
+  const [savedWorkoutPlans, setSavedWorkoutPlans] = useState<any[]>([])
   const [showSaved, setShowSaved] = useState(false)
+  const [expandedMealPlan, setExpandedMealPlan] = useState<string | null>(null)
+  const [expandedWorkoutPlan, setExpandedWorkoutPlan] = useState<string | null>(null)
 
   // Phase info
   const [phaseInfoOpen, setPhaseInfoOpen] = useState<Phase | null>(null)
@@ -194,11 +197,13 @@ export default function Maintenance() {
         }
       }
 
-      // Load saved meal plans from localStorage
-      try {
-        const saved = localStorage.getItem('novura_saved_meals')
-        if (saved) setSavedMealPlans(JSON.parse(saved))
-      } catch { /* ignore */ }
+      // Load saved plans from database
+      const [{ data: meals }, { data: workouts }] = await Promise.all([
+        supabase.from('meal_plans').select('*').eq('user_id', user.id).order('created_at', { ascending: false }).limit(10),
+        supabase.from('workout_plans').select('*').eq('user_id', user.id).order('created_at', { ascending: false }).limit(10),
+      ])
+      if (meals) setSavedMealPlans(meals)
+      if (workouts) setSavedWorkoutPlans(workouts)
 
       setLoading(false)
     }
@@ -271,13 +276,15 @@ export default function Maintenance() {
     setGenerating('meal')
     try {
       const prompt = mealPlanType === 'weekly'
-        ? 'Create a complete weekly meal plan for me. 7 days. Hit my protein target each day. Use foods I actually eat based on my food logs.'
-        : 'Create a complete daily meal plan for me. Breakfast, lunch, snack, dinner. Hit my protein target. Use foods I actually eat.'
+        ? 'Create a complete weekly meal plan for me. 7 days. Hit my protein target each day. Use foods I actually eat based on my food logs. After generating it, save it to my account using the save_meal_plan tool.'
+        : 'Create a complete daily meal plan for me. Breakfast, lunch, snack, dinner. Hit my protein target. Use foods I actually eat. After generating it, save it to my account using the save_meal_plan tool.'
       const result = await sendToCoach(prompt, false)
       setMealPlan(result)
-      const updated = [result, ...savedMealPlans].slice(0, 3)
-      setSavedMealPlans(updated)
-      try { localStorage.setItem('novura_saved_meals', JSON.stringify(updated)) } catch { /* ignore */ }
+      // Refresh saved plans from DB (Trish may have saved via tool)
+      if (userId) {
+        const { data } = await supabase.from('meal_plans').select('*').eq('user_id', userId).order('created_at', { ascending: false }).limit(10)
+        if (data) setSavedMealPlans(data)
+      }
     } catch (err) {
       console.error('generateMealPlan error:', err)
       setMealPlan('Unable to generate meal plan. Please try again.')
@@ -304,8 +311,13 @@ export default function Maintenance() {
   async function generateExercisePlan() {
     setGenerating('exercise')
     try {
-      const result = await sendToCoach(`Create a complete weekly exercise plan for me. My fitness level is ${fitnessLevel}. Equipment available: ${equipment}. Include specific exercises, sets, and reps for each day.`, false)
+      const result = await sendToCoach(`Create a complete weekly exercise plan for me. My fitness level is ${fitnessLevel}. Equipment available: ${equipment}. Include specific exercises, sets, and reps for each day. After generating it, save it to my account using the save_workout_plan tool.`, false)
       setExercisePlan(result)
+      // Refresh saved plans from DB
+      if (userId) {
+        const { data } = await supabase.from('workout_plans').select('*').eq('user_id', userId).order('created_at', { ascending: false }).limit(10)
+        if (data) setSavedWorkoutPlans(data)
+      }
     } catch (err) {
       console.error('generateExercisePlan error:', err)
       setExercisePlan('Unable to generate exercise plan. Please try again.')
@@ -750,22 +762,56 @@ export default function Maintenance() {
             </div>
           )}
 
-          {/* Saved plans */}
+          {/* Saved plans from database */}
           {savedMealPlans.length > 0 && (
             <div className="bg-white border border-[#EAF2EB] rounded-3xl p-6 shadow-[0_4px_24px_-8px_rgba(31,75,50,0.08)]">
               <button onClick={() => setShowSaved(!showSaved)} className="flex justify-between items-center w-full cursor-pointer">
-                <h3 className="text-sm font-semibold text-[#0D1F16]">Saved Plans ({savedMealPlans.length})</h3>
+                <h3 className="text-sm font-semibold text-[#0D1F16]">Saved Meal Plans ({savedMealPlans.length})</h3>
                 {showSaved ? <ChevronUp className="w-4 h-4 text-[#6B7A72]" /> : <ChevronDown className="w-4 h-4 text-[#6B7A72]" />}
               </button>
               {showSaved && (
                 <div className="mt-3 space-y-3">
-                  {savedMealPlans.map((sp, i) => (
-                    <div key={i} className="border-t border-[#EAF2EB] pt-3">
-                      <div className="flex justify-between items-center mb-2">
-                        <span className="text-[10px] text-[#6B7A72] uppercase font-semibold">Plan {savedMealPlans.length - i}</span>
-                        <button onClick={() => { setMealPlan(sp) }} className="text-[10px] text-[#1F4B32] font-semibold cursor-pointer">View</button>
-                      </div>
-                      <p className="text-xs text-[#6B7A72] line-clamp-2">{sp.slice(0, 120)}...</p>
+                  {savedMealPlans.map((sp) => (
+                    <div key={sp.id} className="border-t border-[#EAF2EB] pt-3">
+                      <button onClick={() => setExpandedMealPlan(expandedMealPlan === sp.id ? null : sp.id)}
+                        className="w-full flex justify-between items-center cursor-pointer">
+                        <div className="text-left">
+                          <span className="text-sm font-semibold text-[#0D1F16]">{sp.title}</span>
+                          <p className="text-[10px] text-[#6B7A72]">{new Date(sp.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</p>
+                        </div>
+                        {expandedMealPlan === sp.id ? <ChevronUp className="w-4 h-4 text-[#6B7A72]" /> : <ChevronDown className="w-4 h-4 text-[#6B7A72]" />}
+                      </button>
+                      {expandedMealPlan === sp.id && (
+                        <div className="mt-3 space-y-2">
+                          {sp.description && <p className="text-xs text-[#6B7A72]">{sp.description}</p>}
+                          {(sp.meals || []).map((meal: any, mi: number) => (
+                            <div key={mi} className="bg-[#F5F8F3] rounded-xl p-3">
+                              <div className="flex justify-between items-center">
+                                <span className="text-xs font-semibold text-[#1F4B32] capitalize">{meal.meal_type}</span>
+                                {(meal.estimated_protein || meal.estimated_calories) && (
+                                  <span className="text-[10px] text-[#6B7A72]">
+                                    {meal.estimated_protein ? `${meal.estimated_protein}g protein` : ''}
+                                    {meal.estimated_protein && meal.estimated_calories ? ' · ' : ''}
+                                    {meal.estimated_calories ? `${meal.estimated_calories} cal` : ''}
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-sm text-[#0D1F16] mt-1">{meal.name}</p>
+                              {meal.prep_notes && <p className="text-[10px] text-[#6B7A72] mt-1">{meal.prep_notes}</p>}
+                            </div>
+                          ))}
+                          {sp.grocery_list?.length > 0 && (
+                            <div className="bg-[#F5F8F3] rounded-xl p-3">
+                              <span className="text-xs font-semibold text-[#1F4B32]">Grocery List</span>
+                              <p className="text-xs text-[#0D1F16] mt-1">{sp.grocery_list.join(', ')}</p>
+                            </div>
+                          )}
+                          <button onClick={async () => {
+                            await supabase.from('meal_plans').delete().eq('id', sp.id)
+                            setSavedMealPlans(prev => prev.filter(p => p.id !== sp.id))
+                          }} className="text-[10px] text-red-500 cursor-pointer hover:text-red-700 transition-colors">Delete plan</button>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -818,6 +864,53 @@ export default function Maintenance() {
                 </button>
               </div>
               <div className="text-sm text-[#0D1F16]/80 leading-relaxed whitespace-pre-wrap">{exercisePlan}</div>
+            </div>
+          )}
+
+          {/* Saved workout plans from database */}
+          {savedWorkoutPlans.length > 0 && (
+            <div className="bg-white border border-[#EAF2EB] rounded-3xl p-6 shadow-[0_4px_24px_-8px_rgba(31,75,50,0.08)]">
+              <h3 className="text-sm font-semibold text-[#0D1F16] mb-3">Saved Workout Plans</h3>
+              <div className="space-y-3">
+                {savedWorkoutPlans.map((wp) => (
+                  <div key={wp.id} className="border-t border-[#EAF2EB] pt-3 first:border-0 first:pt-0">
+                    <button onClick={() => setExpandedWorkoutPlan(expandedWorkoutPlan === wp.id ? null : wp.id)}
+                      className="w-full flex justify-between items-center cursor-pointer">
+                      <div className="text-left">
+                        <span className="text-sm font-semibold text-[#0D1F16]">{wp.title}</span>
+                        <p className="text-[10px] text-[#6B7A72]">
+                          {wp.days_per_week ? `${wp.days_per_week}x/week · ` : ''}
+                          {new Date(wp.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                        </p>
+                      </div>
+                      {expandedWorkoutPlan === wp.id ? <ChevronUp className="w-4 h-4 text-[#6B7A72]" /> : <ChevronDown className="w-4 h-4 text-[#6B7A72]" />}
+                    </button>
+                    {expandedWorkoutPlan === wp.id && (
+                      <div className="mt-3 space-y-2">
+                        {wp.description && <p className="text-xs text-[#6B7A72]">{wp.description}</p>}
+                        {(wp.workouts || []).map((day: any, di: number) => (
+                          <div key={di} className="bg-[#F5F8F3] rounded-xl p-3">
+                            <div className="flex justify-between items-center">
+                              <span className="text-xs font-semibold text-[#1F4B32]">{day.day}</span>
+                              {day.focus && <span className="text-[10px] text-[#6B7A72]">{day.focus}</span>}
+                            </div>
+                            {day.exercises?.map((ex: any, ei: number) => (
+                              <p key={ei} className="text-xs text-[#0D1F16] mt-1">
+                                {ex.name}{ex.sets ? ` — ${ex.sets}x${ex.reps || ''}` : ''}{ex.notes ? ` (${ex.notes})` : ''}
+                              </p>
+                            ))}
+                            {day.duration_minutes && <p className="text-[10px] text-[#6B7A72] mt-1">{day.duration_minutes} min</p>}
+                          </div>
+                        ))}
+                        <button onClick={async () => {
+                          await supabase.from('workout_plans').delete().eq('id', wp.id)
+                          setSavedWorkoutPlans(prev => prev.filter(p => p.id !== wp.id))
+                        }} className="text-[10px] text-red-500 cursor-pointer hover:text-red-700 transition-colors">Delete plan</button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </>)}

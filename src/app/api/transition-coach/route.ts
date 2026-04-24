@@ -303,44 +303,219 @@ Sunday - Rest
 
 Scale to their level: Beginner (bodyweight only), Intermediate (dumbbells), Advanced (barbell)
 
-TONE: Direct. Confident. No fluff. Use their actual numbers from the data above. Use line breaks for readability. No asterisks, no markdown bold/italic, no headers with #. Plain text with clean formatting. For simple questions, 2-4 sentences max. For full plans, output the complete structured plan.`
+TONE: Direct. Confident. No fluff. Use their actual numbers from the data above. Use line breaks for readability. No asterisks, no markdown bold/italic, no headers with #. Plain text with clean formatting. For simple questions, 2-4 sentences max. For full plans, output the complete structured plan.
+
+TOOLS: You have tools to save meal plans, workout plans, tapering plans, check-ins, food, weight, and exercise to the user's account. Use them aggressively — when the user says "save this", "add to my plan", "yes", "do it", or anything indicating they want to keep what you just generated, use the appropriate save tool. Never say "I can't save that" — you can. After saving, confirm briefly ("Saved to your Nutrition tab") then ask what's next.`
+
+  const tools = [
+    {
+      name: 'save_meal_plan',
+      description: 'Save a structured meal plan for the user. Use when the user wants to keep a meal plan.',
+      input_schema: {
+        type: 'object' as const,
+        properties: {
+          title: { type: 'string', description: 'Short name e.g. "High-protein prep week"' },
+          description: { type: 'string' },
+          meals: {
+            type: 'array', items: {
+              type: 'object', properties: {
+                meal_type: { type: 'string', enum: ['breakfast', 'lunch', 'dinner', 'snack'] },
+                name: { type: 'string' },
+                ingredients: { type: 'array', items: { type: 'string' } },
+                estimated_protein: { type: 'number' },
+                estimated_calories: { type: 'number' },
+                prep_notes: { type: 'string' },
+              }, required: ['meal_type', 'name'],
+            },
+          },
+          grocery_list: { type: 'array', items: { type: 'string' } },
+        },
+        required: ['title', 'meals'],
+      },
+    },
+    {
+      name: 'save_workout_plan',
+      description: 'Save a structured workout plan for the user.',
+      input_schema: {
+        type: 'object' as const,
+        properties: {
+          title: { type: 'string' },
+          description: { type: 'string' },
+          days_per_week: { type: 'number' },
+          workouts: {
+            type: 'array', items: {
+              type: 'object', properties: {
+                day: { type: 'string', description: 'e.g. "Monday"' },
+                focus: { type: 'string', description: 'e.g. "Upper body"' },
+                exercises: {
+                  type: 'array', items: {
+                    type: 'object', properties: {
+                      name: { type: 'string' },
+                      sets: { type: 'number' },
+                      reps: { type: 'string', description: 'e.g. "8-12"' },
+                      notes: { type: 'string' },
+                    }, required: ['name'],
+                  },
+                },
+                duration_minutes: { type: 'number' },
+              }, required: ['day'],
+            },
+          },
+        },
+        required: ['title', 'workouts'],
+      },
+    },
+    {
+      name: 'save_tapering_plan',
+      description: 'Save the full tapering plan with all phases.',
+      input_schema: {
+        type: 'object' as const,
+        properties: {
+          current_dose: { type: 'string' },
+          target_dose: { type: 'string' },
+          total_weeks: { type: 'number' },
+          phases: {
+            type: 'array', items: {
+              type: 'object', properties: {
+                phase_number: { type: 'number' },
+                name: { type: 'string' },
+                dose: { type: 'string' },
+                duration_weeks: { type: 'number' },
+                key_focus: { type: 'string' },
+                warning_signs: { type: 'array', items: { type: 'string' } },
+              }, required: ['phase_number', 'dose', 'duration_weeks'],
+            },
+          },
+        },
+        required: ['current_dose', 'target_dose', 'phases'],
+      },
+    },
+    {
+      name: 'log_tapering_checkin',
+      description: 'Record a tapering check-in from the user.',
+      input_schema: {
+        type: 'object' as const,
+        properties: {
+          hunger_level: { type: 'number', description: '1-5 scale' },
+          energy_level: { type: 'number', description: '1-5 scale' },
+          mood: { type: 'number', description: '1-5 scale' },
+          cravings: { type: 'number', description: '1-5 scale' },
+          side_effects: { type: 'string' },
+          notes: { type: 'string' },
+          ready_for_next_phase: { type: 'boolean' },
+        },
+      },
+    },
+    {
+      name: 'log_food',
+      description: 'Log a meal the user ate.',
+      input_schema: {
+        type: 'object' as const,
+        properties: {
+          meal_type: { type: 'string', enum: ['breakfast', 'lunch', 'dinner', 'snack', 'other'] },
+          food_name: { type: 'string' },
+          calories: { type: 'number' },
+          protein: { type: 'number' },
+          carbs: { type: 'number' },
+          fat: { type: 'number' },
+        },
+        required: ['meal_type', 'food_name'],
+      },
+    },
+    {
+      name: 'log_weight',
+      description: "Log the user's weight.",
+      input_schema: {
+        type: 'object' as const,
+        properties: { weight: { type: 'number' } },
+        required: ['weight'],
+      },
+    },
+    {
+      name: 'log_exercise',
+      description: 'Log a workout the user completed.',
+      input_schema: {
+        type: 'object' as const,
+        properties: {
+          exercise_type: { type: 'string' },
+          duration_minutes: { type: 'number' },
+          notes: { type: 'string' },
+        },
+        required: ['exercise_type', 'duration_minutes'],
+      },
+    },
+  ]
 
   try {
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': process.env.ANTHROPIC_API_KEY || '',
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 4000,
-        system: systemPrompt,
-        messages: messages.slice(-20),
-      }),
-    })
-
-    if (!res.ok) {
-      const errBody = await res.text().catch(() => 'unknown')
-      console.error('Anthropic API error:', res.status, errBody)
-      return NextResponse.json({
-        error: 'API error',
-        message: 'Trish is temporarily unavailable. Try again in a moment.',
-        debug: process.env.NODE_ENV === 'development' ? errBody : undefined,
-      }, { status: 502 })
+    const apiHeaders = {
+      'Content-Type': 'application/json',
+      'x-api-key': process.env.ANTHROPIC_API_KEY || '',
+      'anthropic-version': '2023-06-01',
     }
 
-    const result = await res.json()
-    const reply = result.content?.[0]?.text
-    if (!reply) {
-      console.error('Anthropic API returned empty content:', JSON.stringify(result))
-      return NextResponse.json({
-        error: 'Empty response',
-        message: 'Trish is temporarily unavailable. Try again in a moment.',
-      }, { status: 502 })
+    const MAX_ITERATIONS = 5
+    const conversationMessages: any[] = [...messages.slice(-20)]
+    let finalResponseText = ''
+
+    for (let i = 0; i < MAX_ITERATIONS; i++) {
+      const res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: apiHeaders,
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: 4000,
+          system: systemPrompt,
+          tools,
+          messages: conversationMessages,
+        }),
+      })
+
+      if (!res.ok) {
+        const errBody = await res.text().catch(() => 'unknown')
+        console.error('Anthropic API error:', res.status, errBody)
+        if (finalResponseText) return NextResponse.json({ message: finalResponseText })
+        return NextResponse.json({
+          error: 'API error',
+          message: 'Trish is temporarily unavailable. Try again in a moment.',
+          debug: process.env.NODE_ENV === 'development' ? errBody : undefined,
+        }, { status: 502 })
+      }
+
+      const result = await res.json()
+      if (!result?.content) {
+        if (finalResponseText) break
+        return NextResponse.json({ error: 'Empty response', message: 'Trish is temporarily unavailable. Try again in a moment.' }, { status: 502 })
+      }
+
+      conversationMessages.push({ role: 'assistant', content: result.content })
+
+      const textBlocks = (result.content || []).filter((b: any) => b.type === 'text')
+      const joined = textBlocks.map((b: any) => b.text).join('\n').trim()
+      if (joined) finalResponseText = joined
+
+      if (result.stop_reason !== 'tool_use') break
+
+      const toolUseBlocks = (result.content || []).filter((b: any) => b.type === 'tool_use')
+      const toolResults: any[] = []
+
+      for (const toolCall of toolUseBlocks) {
+        const toolResult = await executeToolCall(toolCall.name, toolCall.input, user.id)
+        toolResults.push({
+          type: 'tool_result',
+          tool_use_id: toolCall.id,
+          content: toolResult.success
+            ? JSON.stringify({ status: 'saved', ...toolResult })
+            : JSON.stringify({ status: 'error', error: toolResult.error }),
+        })
+      }
+
+      conversationMessages.push({ role: 'user', content: toolResults })
     }
-    return NextResponse.json({ message: reply })
+
+    if (!finalResponseText) {
+      return NextResponse.json({ error: 'Empty response', message: 'Trish is temporarily unavailable. Try again in a moment.' }, { status: 502 })
+    }
+    return NextResponse.json({ message: finalResponseText })
   } catch (err: unknown) {
     console.error('Tapering plan error:', err)
     return NextResponse.json({
@@ -348,5 +523,146 @@ TONE: Direct. Confident. No fluff. Use their actual numbers from the data above.
       message: 'Trish is temporarily unavailable. Try again in a moment.',
       debug: process.env.NODE_ENV === 'development' ? (err instanceof Error ? err.message : String(err)) : undefined,
     }, { status: 500 })
+  }
+}
+
+// ── TOOL EXECUTION ──
+
+const DEDUP_WINDOW_MS = 2 * 60 * 1000
+
+async function checkRecentDuplicate(
+  table: string,
+  userId: string,
+  matchFields: Record<string, any>,
+  timeCol = 'logged_at'
+): Promise<boolean> {
+  const cutoff = new Date(Date.now() - DEDUP_WINDOW_MS).toISOString()
+  let query = supabaseAdmin.from(table).select('id').eq('user_id', userId).gte(timeCol, cutoff)
+  for (const [key, value] of Object.entries(matchFields)) {
+    query = query.eq(key, value)
+  }
+  const { data } = await query.limit(1)
+  return (data && data.length > 0) || false
+}
+
+async function executeToolCall(
+  toolName: string,
+  input: any,
+  userId: string
+): Promise<{ success: boolean; error?: string; skipped?: boolean; [key: string]: any }> {
+  const now = new Date().toISOString()
+
+  try {
+    switch (toolName) {
+      case 'save_meal_plan': {
+        const { error } = await supabaseAdmin.from('meal_plans').insert({
+          user_id: userId,
+          title: input.title,
+          description: input.description || null,
+          meals: input.meals,
+          grocery_list: input.grocery_list || null,
+          created_at: now,
+          updated_at: now,
+        })
+        if (error) return { success: false, error: error.message }
+        return { success: true, saved: 'meal_plan', title: input.title }
+      }
+
+      case 'save_workout_plan': {
+        const { error } = await supabaseAdmin.from('workout_plans').insert({
+          user_id: userId,
+          title: input.title,
+          description: input.description || null,
+          days_per_week: input.days_per_week || null,
+          workouts: input.workouts,
+          created_at: now,
+          updated_at: now,
+        })
+        if (error) return { success: false, error: error.message }
+        return { success: true, saved: 'workout_plan', title: input.title }
+      }
+
+      case 'save_tapering_plan': {
+        const payload = {
+          current_dose: input.current_dose,
+          target_dose: input.target_dose,
+          taper_start_date: now,
+          notes: JSON.stringify({ total_weeks: input.total_weeks, phases: input.phases }),
+          updated_at: now,
+        }
+        const { data: existing } = await supabaseAdmin
+          .from('tapering_plans').select('id').eq('user_id', userId).single()
+        if (existing) {
+          const { error } = await supabaseAdmin
+            .from('tapering_plans').update(payload).eq('id', existing.id)
+          if (error) return { success: false, error: error.message }
+        } else {
+          const { error } = await supabaseAdmin
+            .from('tapering_plans').insert({ user_id: userId, phase: 'tapering', ...payload })
+          if (error) return { success: false, error: error.message }
+        }
+        return { success: true, saved: 'tapering_plan' }
+      }
+
+      case 'log_tapering_checkin': {
+        const { error } = await supabaseAdmin.from('tapering_checkins').insert({
+          user_id: userId,
+          hunger: input.hunger_level || null,
+          cravings: input.cravings || null,
+          confidence: input.mood || null,
+          weight: null,
+          notes: [
+            input.side_effects ? `Side effects: ${input.side_effects}` : '',
+            input.notes || '',
+            input.ready_for_next_phase !== undefined ? `Ready for next phase: ${input.ready_for_next_phase ? 'yes' : 'no'}` : '',
+          ].filter(Boolean).join('. ') || null,
+          logged_at: now,
+        })
+        if (error) return { success: false, error: error.message }
+        return { success: true, logged: 'tapering_checkin' }
+      }
+
+      case 'log_food': {
+        const isDupe = await checkRecentDuplicate('food_logs', userId, {
+          food_name: input.food_name, meal_type: input.meal_type,
+        })
+        if (isDupe) return { success: true, skipped: true, reason: 'duplicate within 2 min window' }
+        const { error } = await supabaseAdmin.from('food_logs').insert({
+          user_id: userId, meal_type: input.meal_type, food_name: input.food_name,
+          calories: input.calories || null, protein: input.protein || null,
+          carbs: input.carbs || null, fat: input.fat || null, logged_at: now,
+        })
+        if (error) return { success: false, error: error.message }
+        return { success: true, logged: 'food', food_name: input.food_name }
+      }
+
+      case 'log_weight': {
+        const isDupe = await checkRecentDuplicate('weight_logs', userId, { weight: input.weight })
+        if (isDupe) return { success: true, skipped: true, reason: 'duplicate within 2 min window' }
+        const { error } = await supabaseAdmin.from('weight_logs').insert({
+          user_id: userId, weight: input.weight, logged_at: now,
+        })
+        if (error) return { success: false, error: error.message }
+        return { success: true, logged: 'weight', weight: input.weight }
+      }
+
+      case 'log_exercise': {
+        const isDupe = await checkRecentDuplicate('exercise_logs', userId, {
+          exercise_type: input.exercise_type, duration_minutes: input.duration_minutes,
+        })
+        if (isDupe) return { success: true, skipped: true, reason: 'duplicate within 2 min window' }
+        const { error } = await supabaseAdmin.from('exercise_logs').insert({
+          user_id: userId, exercise_type: input.exercise_type,
+          duration_minutes: input.duration_minutes, notes: input.notes || null, logged_at: now,
+        })
+        if (error) return { success: false, error: error.message }
+        return { success: true, logged: 'exercise', exercise_type: input.exercise_type }
+      }
+
+      default:
+        return { success: false, error: `Unknown tool: ${toolName}` }
+    }
+  } catch (err: any) {
+    return { success: false, error: err?.message || 'Unknown error' }
   }
 }
