@@ -5,7 +5,8 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '../lib/supabase'
 import VoiceInput from '../components/VoiceInput'
 import BottomNav from '../components/BottomNav'
-import { ArrowLeft, Check, ChevronDown, ChevronUp, Download, Dumbbell, UtensilsCrossed, MessageCircle, Lock, Unlock } from 'lucide-react'
+import { ArrowLeft, Check, ChevronDown, ChevronUp, Download, Dumbbell, UtensilsCrossed, MessageCircle, Lock, Unlock, X } from 'lucide-react'
+import { AnimatePresence, motion } from 'framer-motion'
 
 type Phase = 'exploring' | 'preparing' | 'tapering' | 'maintenance' | 'off_medication'
 
@@ -86,6 +87,34 @@ const TAPER_DURATIONS = [
   { id: '1year', label: '1 Year', desc: 'Ultra-gradual — lowest risk of regain' },
 ]
 
+const PHASE_INFO: Record<Phase, string> = {
+  exploring: 'Learning the app and understanding your relationship with the medication. No active taper plan yet. Start logging consistently to build the data foundation for a successful taper.',
+  preparing: 'You have a taper plan but haven\'t started reducing your dose yet. Focus on nailing protein targets, hydration, and exercise habits so your body is ready.',
+  tapering: 'Actively stepping down your dose. Each phase lasts 4 weeks. Trish monitors your hunger, weight, and side effects to decide when you\'re stable enough to drop further.',
+  maintenance: 'You\'ve reached your target dose (often fully off). Your body is adjusting to managing appetite without medication. This is the hardest phase — stay consistent.',
+  off_medication: '30+ days off medication with stable weight. Congratulations — you\'re in long-term maintenance. The tools you built in earlier phases are what keep you here.',
+}
+
+function computePhase(
+  plan: TaperPlan | null,
+  latestMedDose: number | null,
+  daysSinceLastDose: number | null,
+): Phase {
+  if (!plan) return 'exploring'
+  if (!plan.taper_start_date) return 'preparing'
+
+  const currentDose = latestMedDose ?? parseFloat(plan.current_dose || '0')
+  const targetDose = parseFloat(plan.target_dose || '0')
+
+  if (currentDose > targetDose) return 'tapering'
+
+  if (currentDose === 0 && daysSinceLastDose !== null && daysSinceLastDose >= 30) {
+    return 'off_medication'
+  }
+
+  return 'maintenance'
+}
+
 export default function Maintenance() {
   const router = useRouter()
   const [userId, setUserId] = useState<string | null>(null)
@@ -118,6 +147,11 @@ export default function Maintenance() {
   const [savedMealPlans, setSavedMealPlans] = useState<string[]>([])
   const [showSaved, setShowSaved] = useState(false)
 
+  // Phase info
+  const [phaseInfoOpen, setPhaseInfoOpen] = useState<Phase | null>(null)
+  const [latestMedDose, setLatestMedDose] = useState<number | null>(null)
+  const [daysSinceLastDose, setDaysSinceLastDose] = useState<number | null>(null)
+
   // Coach chat
   const [chatMessages, setChatMessages] = useState<ChatMsg[]>([])
   const [chatInput, setChatInput] = useState('')
@@ -134,7 +168,17 @@ export default function Maintenance() {
       if (!p) { router.push('/onboarding'); return }
       setProfile(p)
 
-      const { data: tp } = await supabase.from('tapering_plans').select('*').eq('user_id', user.id).single()
+      const [{ data: tp }, { data: latestMed }] = await Promise.all([
+        supabase.from('tapering_plans').select('*').eq('user_id', user.id).single(),
+        supabase.from('medication_logs').select('dose, logged_at').eq('user_id', user.id).order('logged_at', { ascending: false }).limit(1).single(),
+      ])
+
+      if (latestMed) {
+        const dose = parseFloat((latestMed.dose || '0').replace(/[^0-9.]/g, ''))
+        setLatestMedDose(dose)
+        setDaysSinceLastDose(Math.floor((Date.now() - new Date(latestMed.logged_at).getTime()) / 86400000))
+      }
+
       if (tp) {
         setPlan(tp)
         if (tp.readiness_answers) {
@@ -278,17 +322,6 @@ export default function Maintenance() {
     if (confirmed) setConfirmedReady(true)
   }
 
-  async function setPhase(phase: Phase) {
-    if (!userId) return
-    if (plan) {
-      const { data } = await supabase.from('tapering_plans').update({ phase, updated_at: new Date().toISOString() }).eq('id', plan.id).select().single()
-      if (data) setPlan(data)
-    } else {
-      const { data } = await supabase.from('tapering_plans').insert({ user_id: userId, phase }).select().single()
-      if (data) setPlan(data)
-    }
-  }
-
   // ── Chat ──────────────────────────────────────────────
   async function sendChat(msg?: string) {
     const text = msg || chatInput.trim()
@@ -312,7 +345,7 @@ export default function Maintenance() {
     </div>
   )
 
-  const phase = plan?.phase || 'exploring'
+  const phase = computePhase(plan, latestMedDose, daysSinceLastDose)
   const phaseIdx = PHASES.findIndex(p => p.id === phase)
   const readinessScore = plan?.readiness_score ?? null
   const checkedCount = ALL_ASSESSMENT_ITEMS.filter(item => readiness[item]).length
@@ -336,10 +369,16 @@ export default function Maintenance() {
               Dashboard
             </button>
           </div>
-          {/* Phase pipeline */}
+          {/* Phase pipeline — display only, tap for info */}
           <div className="flex items-center gap-3">
             {PHASES.map((p, i) => (
-              <button key={p.id} onClick={() => setPhase(p.id)} className="flex-1 flex flex-col items-center gap-2 cursor-pointer group">
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => setPhaseInfoOpen(p.id)}
+                aria-label={`Learn about ${p.label} phase`}
+                className="flex-1 flex flex-col items-center gap-2 cursor-pointer group"
+              >
                 <div className="relative">
                   {i < phaseIdx ? (
                     <div className="w-8 h-8 rounded-full bg-gradient-to-r from-[#1F4B32] to-[#2D6B45] flex items-center justify-center shadow-lg">
@@ -364,6 +403,58 @@ export default function Maintenance() {
           </div>
         </div>
       </header>
+
+      {/* Phase info bottom sheet */}
+      <AnimatePresence>
+        {phaseInfoOpen && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/40 z-50"
+              onClick={() => setPhaseInfoOpen(null)}
+            />
+            <motion.div
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              transition={{ type: 'spring', bounce: 0.15, duration: 0.4 }}
+              className="fixed bottom-0 left-0 right-0 bg-white rounded-t-3xl z-50 p-6 pb-10 max-w-2xl mx-auto shadow-[0_-8px_32px_rgba(0,0,0,0.15)]"
+            >
+              <div className="flex justify-between items-start mb-4">
+                <div className="flex items-center gap-3">
+                  <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                    PHASES.findIndex(p => p.id === phaseInfoOpen) < phaseIdx
+                      ? 'bg-gradient-to-r from-[#1F4B32] to-[#2D6B45]'
+                      : phaseInfoOpen === phase
+                        ? 'bg-[#7FFFA4]'
+                        : 'bg-[#F5F8F3] border-2 border-[#EAF2EB]'
+                  }`}>
+                    {PHASES.findIndex(p => p.id === phaseInfoOpen) < phaseIdx ? (
+                      <Check className="w-5 h-5 text-white" strokeWidth={2.5} />
+                    ) : phaseInfoOpen === phase ? (
+                      <div className="w-3 h-3 rounded-full bg-[#1F4B32]" />
+                    ) : (
+                      <div className="w-2.5 h-2.5 rounded-full bg-[#6B7A72]/30" />
+                    )}
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-[#0D1F16]">{PHASES.find(p => p.id === phaseInfoOpen)?.label}</h3>
+                    <p className="text-[10px] text-[#6B7A72] uppercase font-semibold tracking-wider">
+                      {PHASES.findIndex(p => p.id === phaseInfoOpen) < phaseIdx ? 'Completed' : phaseInfoOpen === phase ? 'Current phase' : 'Upcoming'}
+                    </p>
+                  </div>
+                </div>
+                <button onClick={() => setPhaseInfoOpen(null)} className="p-2 rounded-full hover:bg-[#F5F8F3] transition-colors cursor-pointer">
+                  <X className="w-4 h-4 text-[#6B7A72]" />
+                </button>
+              </div>
+              <p className="text-sm text-[#0D1F16]/80 leading-relaxed">{PHASE_INFO[phaseInfoOpen]}</p>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
 
       {/* Tabs */}
       <div className="bg-white/80 backdrop-blur-md border-b border-[#EAF2EB] sticky top-0 z-40">
