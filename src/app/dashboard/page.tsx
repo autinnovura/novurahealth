@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { toast } from 'sonner'
 import { supabase } from '../lib/supabase'
 import FirstRunModal from '../components/FirstRunModal'
@@ -162,7 +163,6 @@ export default function Dashboard() {
   const [streak, setStreak] = useState(0)
   const [showFirstRun, setShowFirstRun] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
-  const [calendarRefreshKey, setCalendarRefreshKey] = useState(0)
   const [medMenuId, setMedMenuId] = useState<string | null>(null)
   const [medChartCollapsed, setMedChartCollapsed] = useState(() => {
     if (typeof window !== 'undefined') return localStorage.getItem('novura_medchart_collapsed') === 'true'
@@ -302,7 +302,7 @@ export default function Dashboard() {
       if (error) { toast.error('Failed to save: ' + error.message); return }
       if (data) { setTodayFoodLogs(prev => [...prev, data]); setAllFoodLogs(prev => [...prev, data]); setDateFoodLogs(prev => [...prev, data]) }
       toast.success('Logged!')
-      setCalendarRefreshKey(k => k + 1)
+
       setModal(null); setFoodName(''); setFoodCalories(''); setFoodProtein(''); setFoodCarbs(''); setFoodFat('')
     } finally { setIsSaving(false) }
   }
@@ -326,7 +326,7 @@ export default function Dashboard() {
         if (updated) setMedChartLogs(updated)
       }
       toast.success('Logged!')
-      setCalendarRefreshKey(k => k + 1)
+
       setModal(null); setInjectionSite(''); setMedDose(''); setCustomDose(''); setMedNotes('')
     } finally { setIsSaving(false) }
   }
@@ -339,7 +339,7 @@ export default function Dashboard() {
       if (error) { toast.error('Failed to save: ' + error.message); return }
       if (data) setWeightLogs(prev => [data, ...prev])
       toast.success('Logged!')
-      setCalendarRefreshKey(k => k + 1)
+
       setModal(null); setNewWeight('')
     } finally { setIsSaving(false) }
   }
@@ -352,7 +352,7 @@ export default function Dashboard() {
       if (error) { toast.error('Failed to save: ' + error.message); return }
       if (data) setSideEffectLogs(prev => [data, ...prev])
       toast.success('Logged!')
-      setCalendarRefreshKey(k => k + 1)
+
       setModal(null); setSymptom(''); setSeverity(3)
     } finally { setIsSaving(false) }
   }
@@ -365,7 +365,7 @@ export default function Dashboard() {
       if (error) { toast.error('Failed to save: ' + error.message); return }
       if (data) { setWaterLogs(prev => [...prev, data]); setDateWaterLogs(prev => [...prev, data]) }
       toast.success('Logged!')
-      setCalendarRefreshKey(k => k + 1)
+
     } finally { setIsSaving(false) }
   }
 
@@ -377,7 +377,7 @@ export default function Dashboard() {
       if (error) { toast.error('Failed to save: ' + error.message); return }
       if (data) setCheckinLogs(prev => [data, ...prev])
       toast.success('Logged!')
-      setCalendarRefreshKey(k => k + 1)
+
       setModal(null); setCheckinMood(3); setCheckinEnergy(3); setCheckinNotes('')
     } finally { setIsSaving(false) }
   }
@@ -390,7 +390,7 @@ export default function Dashboard() {
       if (error) { toast.error('Failed to save: ' + error.message); return }
       if (data) setExerciseLogs(prev => [data, ...prev])
       toast.success('Logged!')
-      setCalendarRefreshKey(k => k + 1)
+
       setModal(null); setExerciseType(''); setExerciseDuration(''); setExerciseNotes('')
     } finally { setIsSaving(false) }
   }
@@ -608,16 +608,24 @@ export default function Dashboard() {
               <p className="text-sm text-[#6B7A72] mt-1 max-w-[280px]">{insightLine}</p>
             </div>
             <div className="flex items-center gap-2">
-              {streak > 0 && (
-                <motion.div
-                  initial={{ scale: 0.8, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  className="bg-gradient-to-r from-[#1F4B32] to-[#2D6B45] px-3 py-1.5 rounded-full flex items-center gap-1.5 shadow-[0_2px_12px_-4px_rgba(31,75,50,0.3)]"
-                >
-                  <Flame className="w-3.5 h-3.5 text-[#7FFFA4]" />
-                  <span className="text-white text-xs font-semibold tabular-nums">{streak}</span>
-                </motion.div>
-              )}
+              {streak > 0 && (() => {
+                const hasLoggedToday = todayFoodLogs.length > 0 || waterLogs.length > 0 || medLogs.some(m => isToday(new Date(m.logged_at))) || exerciseLogs.some(e => isToday(new Date(e.logged_at)))
+                const atRisk = streak > 0 && new Date().getHours() >= 18 && !hasLoggedToday
+                return (
+                  <Link href="/stats">
+                    <motion.div
+                      initial={{ scale: 0.8, opacity: 0 }}
+                      animate={{ scale: 1, opacity: 1 }}
+                      className="relative bg-gradient-to-r from-[#FFF4E5] to-[#FFE4C4] px-3.5 py-1.5 rounded-full flex items-center gap-1.5 shadow-sm hover:scale-105 active:scale-95 transition-transform"
+                    >
+                      <Flame className="w-3.5 h-3.5 text-[#C4742B]" />
+                      <span className="text-[#0D1F16] text-xs font-bold tabular-nums">{streak}</span>
+                      <span className="text-[#6B7A72] text-[10px]">day{streak !== 1 ? 's' : ''}</span>
+                      {atRisk && <span className="absolute -top-1 -right-1 w-3 h-3 bg-amber-500 rounded-full animate-pulse" />}
+                    </motion.div>
+                  </Link>
+                )
+              })()}
               <button onClick={async () => { await supabase.auth.signOut(); router.push('/') }} className="text-[#6B7A72]/40 hover:text-[#6B7A72] transition-colors cursor-pointer p-1">
                 <LogOut className="w-4 h-4" />
               </button>

@@ -3,14 +3,14 @@
 import { usePathname } from 'next/navigation'
 import Link from 'next/link'
 import {
-  Home, TrendingUp, MessageCircle, DollarSign, Settings,
+  Home, BarChart3, MessageCircle, TrendingUp, Settings,
 } from 'lucide-react'
 
 const NAV_ITEMS = [
   { href: '/dashboard', icon: Home, label: 'Home' },
-  { href: '/maintenance', icon: TrendingUp, label: 'Transition' },
+  { href: '/stats', icon: BarChart3, label: 'Stats' },
   { href: '/chat', icon: MessageCircle, label: 'Nova' },
-  { href: '/savings', icon: DollarSign, label: 'Savings' },
+  { href: '/maintenance', icon: TrendingUp, label: 'Transition' },
   { href: '/settings', icon: Settings, label: 'Settings' },
 ]
 

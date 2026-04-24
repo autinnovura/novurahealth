@@ -7,7 +7,7 @@ import { toast } from 'sonner'
 import DataImport from '../components/DataImport'
 import StreakCalendar from '../components/StreakCalendar'
 import BottomNav from '../components/BottomNav'
-import { ArrowLeft, ChevronRight, Download, Shield, AlertTriangle, User, Lock, Database, Syringe, Pill, Brain, Pin, PinOff, Pencil, Trash2, Plus, MessageCircle, X, Flame } from 'lucide-react'
+import { ArrowLeft, ChevronRight, Download, Shield, AlertTriangle, User, Lock, Database, Syringe, Pill, Brain, Pin, PinOff, Pencil, Trash2, Plus, MessageCircle, X, Flame, DollarSign } from 'lucide-react'
 import { getMedicationChoices, findMedicationByLabel } from '../lib/medications'
 
 interface Profile {
@@ -496,6 +496,20 @@ export default function Settings() {
               </button>
             </div>
           </div>
+
+          {/* Savings & Coverage */}
+          <a href="/savings" className="block bg-white border border-[#EAF2EB] rounded-3xl shadow-[0_4px_24px_-8px_rgba(31,75,50,0.08)] p-5 hover:bg-[#F5F8F3] transition-all duration-300">
+            <div className="flex items-center gap-4">
+              <div className="w-10 h-10 rounded-2xl bg-[#EAF2EB] flex items-center justify-center shrink-0">
+                <DollarSign className="w-5 h-5 text-[#1F4B32]" strokeWidth={1.5} />
+              </div>
+              <div className="flex-1">
+                <p className="text-sm font-semibold text-[#0D1F16]">Savings & Coverage</p>
+                <p className="text-xs text-[#6B7A72]">Manufacturer savings cards and telehealth options</p>
+              </div>
+              <ChevronRight className="w-4 h-4 text-[#6B7A72]/30" />
+            </div>
+          </a>
 
           {/* Danger zone */}
           <div className="bg-white border border-red-100/20 rounded-3xl shadow-[0_4px_24px_-8px_rgba(31,75,50,0.08)] p-6 space-y-4">
