@@ -215,6 +215,14 @@ export default function Maintenance() {
   }, [chatMessages, chatLoading])
 
   useEffect(() => {
+    const handler = () => {
+      chatRef.current?.scrollTo({ top: chatRef.current.scrollHeight, behavior: 'smooth' })
+    }
+    window.visualViewport?.addEventListener('resize', handler)
+    return () => window.visualViewport?.removeEventListener('resize', handler)
+  }, [])
+
+  useEffect(() => {
     const mq = window.matchMedia('(min-width: 640px)')
     setIsDesktop(mq.matches)
     const handler = (e: MediaQueryListEvent) => setIsDesktop(e.matches)
@@ -945,81 +953,90 @@ export default function Maintenance() {
               </p>
             </div>
 
-            <div ref={chatRef} className="flex-1 overflow-y-auto space-y-3 mb-4">
-              {chatMessages.length === 0 && (
-                <div className="text-center py-8">
-                  <div className="w-14 h-14 rounded-full bg-gradient-to-br from-[#C4742B] to-[#D4843B] flex items-center justify-center mx-auto mb-3 shadow-[0_4px_16px_-4px_rgba(196,116,43,0.4)]">
-                    <MessageCircle className="w-6 h-6 text-white" />
-                  </div>
-                  <p className="text-sm font-semibold text-[#0D1F16]">Ask Trish, your transition coach</p>
-                  <p className="text-xs text-[#6B7A72] mt-1 max-w-xs mx-auto">Direct, data-driven plans for tapering, nutrition, exercise, and maintaining your results.</p>
-                  <div className="flex flex-wrap justify-center gap-2 mt-4">
-                    {([
-                      ...(taperUnlocked ? ['Generate my tapering plan'] : []),
-                      'Make me a weekly meal plan',
-                      'Create an exercise plan for me',
-                      'Am I ready to start tapering?',
-                      "I'm gaining weight — what do I do?",
-                      'Give me a high-protein recipe',
-                    ] as string[]).map(q => (
-                      <button key={q} onClick={() => sendChat(q)}
-                        className="text-xs px-3 py-2 rounded-full border border-[#EAF2EB] text-[#6B7A72] cursor-pointer hover:border-[#1F4B32] hover:text-[#1F4B32] transition-all duration-300">
-                        {q}
-                      </button>
-                    ))}
+            <div ref={chatRef} className="flex-1 overflow-y-auto space-y-3 flex flex-col">
+              {chatMessages.length === 0 ? (
+                <div className="flex-1 flex items-center justify-center">
+                  <div className="text-center py-8">
+                    <div className="w-14 h-14 rounded-full bg-gradient-to-br from-[#C4742B] to-[#D4843B] flex items-center justify-center mx-auto mb-3 shadow-[0_4px_16px_-4px_rgba(196,116,43,0.4)]">
+                      <MessageCircle className="w-6 h-6 text-white" />
+                    </div>
+                    <p className="text-sm font-semibold text-[#0D1F16]">Ask Trish, your transition coach</p>
+                    <p className="text-xs text-[#6B7A72] mt-1 max-w-xs mx-auto">Direct, data-driven plans for tapering, nutrition, exercise, and maintaining your results.</p>
+                    <div className="flex flex-wrap justify-center gap-2 mt-4">
+                      {([
+                        ...(taperUnlocked ? ['Generate my tapering plan'] : []),
+                        'Make me a weekly meal plan',
+                        'Create an exercise plan for me',
+                        'Am I ready to start tapering?',
+                        "I'm gaining weight — what do I do?",
+                        'Give me a high-protein recipe',
+                      ] as string[]).map(q => (
+                        <button key={q} onClick={() => sendChat(q)}
+                          className="text-xs px-3 py-2 rounded-full border border-[#EAF2EB] text-[#6B7A72] cursor-pointer hover:border-[#1F4B32] hover:text-[#1F4B32] transition-all duration-300">
+                          {q}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 </div>
+              ) : (
+                <div className="flex-1" />
               )}
 
-              {chatMessages.map((msg, i) => (
-                <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                  {msg.role === 'assistant' && (
+              <div className="space-y-3">
+                {chatMessages.map((msg, i) => (
+                  <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                    {msg.role === 'assistant' && (
+                      <div className="w-7 h-7 rounded-full bg-gradient-to-br from-[#C4742B] to-[#D4843B] flex items-center justify-center shrink-0 mr-2 mt-1">
+                        <MessageCircle className="w-3.5 h-3.5 text-white" />
+                      </div>
+                    )}
+                    <div className={`max-w-[85%] px-4 py-3 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap ${
+                      msg.role === 'user' ? 'bg-gradient-to-r from-[#1F4B32] to-[#2D6B45] text-white rounded-br-md' : 'bg-white border border-[#EAF2EB] text-[#0D1F16] rounded-bl-md shadow-[0_4px_24px_-8px_rgba(31,75,50,0.08)]'
+                    }`}>{msg.content}</div>
+                  </div>
+                ))}
+
+                {chatLoading && (
+                  <div className="flex justify-start">
                     <div className="w-7 h-7 rounded-full bg-gradient-to-br from-[#C4742B] to-[#D4843B] flex items-center justify-center shrink-0 mr-2 mt-1">
                       <MessageCircle className="w-3.5 h-3.5 text-white" />
                     </div>
-                  )}
-                  <div className={`max-w-[85%] px-4 py-3 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap ${
-                    msg.role === 'user' ? 'bg-gradient-to-r from-[#1F4B32] to-[#2D6B45] text-white rounded-br-md' : 'bg-white border border-[#EAF2EB] text-[#0D1F16] rounded-bl-md shadow-[0_4px_24px_-8px_rgba(31,75,50,0.08)]'
-                  }`}>{msg.content}</div>
-                </div>
-              ))}
-
-              {chatLoading && (
-                <div className="flex justify-start">
-                  <div className="w-7 h-7 rounded-full bg-gradient-to-br from-[#C4742B] to-[#D4843B] flex items-center justify-center shrink-0 mr-2 mt-1">
-                    <MessageCircle className="w-3.5 h-3.5 text-white" />
-                  </div>
-                  <div className="bg-white border border-[#EAF2EB] px-4 py-3 rounded-2xl rounded-bl-md shadow-[0_4px_24px_-8px_rgba(31,75,50,0.08)]">
-                    <div className="flex gap-1.5">
-                      <div className="w-2 h-2 rounded-full bg-[#7FFFA4] animate-bounce" style={{ animationDelay: '0ms' }} />
-                      <div className="w-2 h-2 rounded-full bg-[#7FFFA4] animate-bounce" style={{ animationDelay: '150ms' }} />
-                      <div className="w-2 h-2 rounded-full bg-[#7FFFA4] animate-bounce" style={{ animationDelay: '300ms' }} />
+                    <div className="bg-white border border-[#EAF2EB] px-4 py-3 rounded-2xl rounded-bl-md shadow-[0_4px_24px_-8px_rgba(31,75,50,0.08)]">
+                      <div className="flex gap-1.5">
+                        <div className="w-2 h-2 rounded-full bg-[#7FFFA4] animate-bounce" style={{ animationDelay: '0ms' }} />
+                        <div className="w-2 h-2 rounded-full bg-[#7FFFA4] animate-bounce" style={{ animationDelay: '150ms' }} />
+                        <div className="w-2 h-2 rounded-full bg-[#7FFFA4] animate-bounce" style={{ animationDelay: '300ms' }} />
+                      </div>
                     </div>
                   </div>
-                </div>
-              )}
-            </div>
+                )}
+              </div>
 
-            <form autoComplete="off" onSubmit={e => { e.preventDefault(); sendChat() }} className="flex gap-2 bg-white/80 backdrop-blur-md rounded-2xl p-2 border border-[#EAF2EB]">
-              <input type="text"
-                name="trish-message"
-                autoComplete="off"
-                autoCorrect="on"
-                autoCapitalize="sentences"
-                spellCheck={true}
-                data-form-type="other"
-                data-1p-ignore="true"
-                data-lpignore="true"
-                value={chatInput} onChange={e => setChatInput(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && sendChat()}
-                placeholder="Ask Trish anything..." autoFocus
-                className="flex-1 px-3 py-2.5 bg-transparent text-sm text-[#0D1F16] outline-none placeholder:text-[#6B7A72]/50"/>
-              <VoiceInput onResult={(text) => setChatInput(text)} />
-              <button onClick={() => sendChat()} disabled={chatLoading || !chatInput.trim()}
-                className="bg-gradient-to-r from-[#1F4B32] to-[#2D6B45] text-white px-5 py-2.5 rounded-xl text-sm font-semibold cursor-pointer disabled:opacity-30 transition-all duration-300 hover:shadow-[0_4px_16px_-4px_rgba(31,75,50,0.4)]">
-                Send
-              </button>
-            </form>
+              {/* Input — flows inline at end of messages */}
+              <div className="pt-4 pb-2">
+                <form autoComplete="off" onSubmit={e => { e.preventDefault(); sendChat() }} className="flex gap-2 bg-white/80 backdrop-blur-md rounded-2xl p-2 border border-[#EAF2EB]">
+                  <input type="text"
+                    name="trish-message"
+                    autoComplete="off"
+                    autoCorrect="on"
+                    autoCapitalize="sentences"
+                    spellCheck={true}
+                    data-form-type="other"
+                    data-1p-ignore="true"
+                    data-lpignore="true"
+                    value={chatInput} onChange={e => setChatInput(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && sendChat()}
+                    placeholder="Ask Trish anything..." autoFocus
+                    className="flex-1 px-3 py-2.5 bg-transparent text-sm text-[#0D1F16] outline-none placeholder:text-[#6B7A72]/50"/>
+                  <VoiceInput onResult={(text) => setChatInput(text)} />
+                  <button onClick={() => sendChat()} disabled={chatLoading || !chatInput.trim()}
+                    className="bg-gradient-to-r from-[#1F4B32] to-[#2D6B45] text-white px-5 py-2.5 rounded-xl text-sm font-semibold cursor-pointer disabled:opacity-30 transition-all duration-300 hover:shadow-[0_4px_16px_-4px_rgba(31,75,50,0.4)]">
+                    Send
+                  </button>
+                </form>
+              </div>
+            </div>
           </div>
         )}
       </div>

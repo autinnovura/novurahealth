@@ -70,6 +70,14 @@ function Chat() {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
   }, [messages, loading])
 
+  useEffect(() => {
+    const handler = () => {
+      scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
+    }
+    window.visualViewport?.addEventListener('resize', handler)
+    return () => window.visualViewport?.removeEventListener('resize', handler)
+  }, [])
+
   const sendMessage = useCallback(async (msg?: string) => {
     const text = (msg || input).trim()
     if (!text || !userId) return
@@ -152,28 +160,32 @@ function Chat() {
         <div className="relative h-px bg-gradient-to-r from-transparent via-[#EAF2EB] to-transparent" />
       </header>
 
-      {/* Messages */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-5 max-w-2xl mx-auto w-full">
-        {messages.length === 0 && !loading && (
-          <div className="text-center py-16">
-            <div className="w-16 h-16 rounded-3xl bg-gradient-to-br from-[#1F4B32] to-[#2D6B45] flex items-center justify-center mx-auto mb-6 shadow-[0_4px_24px_-8px_rgba(31,75,50,0.08)]">
-              <Sparkles className="w-7 h-7 text-[#7FFFA4]" strokeWidth={1.5} />
-            </div>
-            <h2 className="text-2xl font-bold text-[#0D1F16] mb-2" style={{ fontFamily: 'var(--font-fraunces)' }}>
-              Hey, what&apos;s on your mind?
-            </h2>
-            <p className="text-sm text-[#6B7A72] mb-8 max-w-xs mx-auto leading-relaxed">
-              I know your data — meals, weight, meds, all of it. Ask me anything about your journey.
-            </p>
-            <div className="flex flex-wrap justify-center gap-2">
-              {QUICK_ACTIONS.map(q => (
-                <button key={q.label} onClick={() => sendMessage(q.prompt)}
-                  className="text-xs px-4 py-2.5 rounded-2xl backdrop-blur-md bg-white/60 border border-white/80 text-[#0D1F16] cursor-pointer hover:bg-white/90 hover:shadow-[0_4px_24px_-8px_rgba(31,75,50,0.08)] transition-all duration-300 flex items-center gap-1.5">
-                  <span>{q.emoji}</span> {q.label}
-                </button>
-              ))}
+      {/* Messages + Input — single scrollable container */}
+      <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-5 max-w-2xl mx-auto w-full flex flex-col">
+        {messages.length === 0 && !loading ? (
+          <div className="flex-1 flex items-center justify-center">
+            <div className="text-center py-16">
+              <div className="w-16 h-16 rounded-3xl bg-gradient-to-br from-[#1F4B32] to-[#2D6B45] flex items-center justify-center mx-auto mb-6 shadow-[0_4px_24px_-8px_rgba(31,75,50,0.08)]">
+                <Sparkles className="w-7 h-7 text-[#7FFFA4]" strokeWidth={1.5} />
+              </div>
+              <h2 className="text-2xl font-bold text-[#0D1F16] mb-2" style={{ fontFamily: 'var(--font-fraunces)' }}>
+                Hey, what&apos;s on your mind?
+              </h2>
+              <p className="text-sm text-[#6B7A72] mb-8 max-w-xs mx-auto leading-relaxed">
+                I know your data — meals, weight, meds, all of it. Ask me anything about your journey.
+              </p>
+              <div className="flex flex-wrap justify-center gap-2">
+                {QUICK_ACTIONS.map(q => (
+                  <button key={q.label} onClick={() => sendMessage(q.prompt)}
+                    className="text-xs px-4 py-2.5 rounded-2xl backdrop-blur-md bg-white/60 border border-white/80 text-[#0D1F16] cursor-pointer hover:bg-white/90 hover:shadow-[0_4px_24px_-8px_rgba(31,75,50,0.08)] transition-all duration-300 flex items-center gap-1.5">
+                    <span>{q.emoji}</span> {q.label}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
+        ) : (
+          <div className="flex-1" />
         )}
 
         <div className="space-y-4">
@@ -209,48 +221,48 @@ function Chat() {
             </div>
           )}
         </div>
-      </div>
 
-      {/* Input */}
-      <div className="shrink-0 bg-white/85 backdrop-blur-xl border-t border-[#EAF2EB] px-4 py-3 max-w-2xl mx-auto w-full">
-        {messages.length > 0 && (
-          <div className="flex gap-2 overflow-x-auto pb-2 mb-2 scrollbar-hide" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
-            {QUICK_ACTIONS.map(q => (
-              <button key={q.label} onClick={() => sendMessage(q.prompt)} disabled={loading}
-                className="shrink-0 text-[11px] px-3 py-1.5 rounded-2xl backdrop-blur-md bg-white/60 border border-white/80 text-[#0D1F16] cursor-pointer hover:bg-white/90 hover:shadow-[0_4px_24px_-8px_rgba(31,75,50,0.08)] transition-all duration-300 disabled:opacity-40 flex items-center gap-1">
-                <span>{q.emoji}</span> {q.label}
-              </button>
-            ))}
-          </div>
-        )}
-        <form autoComplete="off" onSubmit={e => { e.preventDefault(); sendMessage() }} className="flex gap-2">
-          <input
-            ref={inputRef}
-            type="text"
-            name="nova-message"
-            autoComplete="off"
-            autoCorrect="on"
-            autoCapitalize="sentences"
-            spellCheck={true}
-            data-form-type="other"
-            data-1p-ignore="true"
-            data-lpignore="true"
-            value={input}
-            onChange={e => setInput(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), sendMessage())}
-            placeholder="Ask Nova anything..."
-            className="flex-1 px-4 py-3 rounded-3xl border border-[#EAF2EB] bg-[#FAFAF7] text-sm text-[#0D1F16] outline-none focus:border-[#1F4B32] placeholder:text-[#6B7A72]/50 shadow-[inset_0_1px_3px_rgba(31,75,50,0.04)] transition-all duration-300"
-          />
-          <VoiceInput onResult={(text) => setInput(text)} />
-          <button type="submit" disabled={loading || !input.trim()}
-            className={`px-5 py-3 rounded-3xl text-sm font-semibold cursor-pointer transition-all duration-300 active:scale-95 text-white ${
-              input.trim()
-                ? 'bg-gradient-to-r from-[#1F4B32] to-[#2D6B45] shadow-[0_4px_24px_-8px_rgba(31,75,50,0.3)]'
-                : 'bg-gradient-to-r from-[#1F4B32] to-[#2D6B45] opacity-30'
-            }`}>
-            <Send className="w-4 h-4" strokeWidth={2} />
-          </button>
-        </form>
+        {/* Input — flows inline at end of messages */}
+        <div className="pt-4 pb-2" ref={el => { if (el) el.dataset.inputArea = 'true' }}>
+          {messages.length > 0 && (
+            <div className="flex gap-2 overflow-x-auto pb-2 mb-2" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+              {QUICK_ACTIONS.map(q => (
+                <button key={q.label} onClick={() => sendMessage(q.prompt)} disabled={loading}
+                  className="shrink-0 text-[11px] px-3 py-1.5 rounded-2xl backdrop-blur-md bg-white/60 border border-white/80 text-[#0D1F16] cursor-pointer hover:bg-white/90 hover:shadow-[0_4px_24px_-8px_rgba(31,75,50,0.08)] transition-all duration-300 disabled:opacity-40 flex items-center gap-1">
+                  <span>{q.emoji}</span> {q.label}
+                </button>
+              ))}
+            </div>
+          )}
+          <form autoComplete="off" onSubmit={e => { e.preventDefault(); sendMessage() }} className="flex gap-2">
+            <input
+              ref={inputRef}
+              type="text"
+              name="nova-message"
+              autoComplete="off"
+              autoCorrect="on"
+              autoCapitalize="sentences"
+              spellCheck={true}
+              data-form-type="other"
+              data-1p-ignore="true"
+              data-lpignore="true"
+              value={input}
+              onChange={e => setInput(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), sendMessage())}
+              placeholder="Ask Nova anything..."
+              className="flex-1 px-4 py-3 rounded-3xl border border-[#EAF2EB] bg-white text-sm text-[#0D1F16] outline-none focus:border-[#1F4B32] placeholder:text-[#6B7A72]/50 shadow-[inset_0_1px_3px_rgba(31,75,50,0.04)] transition-all duration-300"
+            />
+            <VoiceInput onResult={(text) => setInput(text)} />
+            <button type="submit" disabled={loading || !input.trim()}
+              className={`px-5 py-3 rounded-3xl text-sm font-semibold cursor-pointer transition-all duration-300 active:scale-95 text-white ${
+                input.trim()
+                  ? 'bg-gradient-to-r from-[#1F4B32] to-[#2D6B45] shadow-[0_4px_24px_-8px_rgba(31,75,50,0.3)]'
+                  : 'bg-gradient-to-r from-[#1F4B32] to-[#2D6B45] opacity-30'
+              }`}>
+              <Send className="w-4 h-4" strokeWidth={2} />
+            </button>
+          </form>
+        </div>
       </div>
 
       {/* Bottom nav */}
