@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '../lib/supabase'
 import VoiceInput from '../components/VoiceInput'
 import BottomNav from '../components/BottomNav'
-import { ArrowLeft, Check, ChevronDown, ChevronUp, Download, Dumbbell, UtensilsCrossed, MessageCircle, Lock, Unlock, X } from 'lucide-react'
+import { ArrowLeft, Check, ChevronDown, ChevronUp, Download, Dumbbell, UtensilsCrossed, MessageCircle, Lock, Unlock, X, Plus, BookOpen, Pin } from 'lucide-react'
 import { AnimatePresence, motion } from 'framer-motion'
 
 type Phase = 'exploring' | 'preparing' | 'tapering' | 'maintenance' | 'off_medication'
@@ -164,6 +164,10 @@ export default function Maintenance() {
   const [chatInput, setChatInput] = useState('')
   const [chatLoading, setChatLoading] = useState(false)
   const chatRef = useRef<HTMLDivElement>(null)
+  const [coachConversationId, setCoachConversationId] = useState<string | null>(null)
+  const [coachSummary, setCoachSummary] = useState<string | null>(null)
+  const [coachMessageCount, setCoachMessageCount] = useState(0)
+  const [showCoachSummary, setShowCoachSummary] = useState(false)
 
   useEffect(() => {
     async function init() {
@@ -204,6 +208,25 @@ export default function Maintenance() {
       if (meals) setSavedMealPlans(meals)
       if (workouts) setSavedWorkoutPlans(workouts)
 
+      // Load active Trish conversation
+      const convRes = await fetch('/api/conversations?coach=trish&archived=false')
+      const convData = await convRes.json()
+      const activeConv = convData.conversations?.[0]
+      if (activeConv) {
+        setCoachConversationId(activeConv.id)
+        setCoachSummary(activeConv.summary)
+        setCoachMessageCount(activeConv.message_count)
+        // Load messages
+        const { data: coachMsgs } = await supabase
+          .from('messages').select('role, content')
+          .eq('conversation_id', activeConv.id)
+          .order('created_at', { ascending: true })
+          .limit(50)
+        if (coachMsgs?.length) {
+          setChatMessages(coachMsgs.map(m => ({ role: m.role as 'user' | 'assistant', content: m.content })))
+        }
+      }
+
       setLoading(false)
     }
     init()
@@ -234,25 +257,44 @@ export default function Maintenance() {
   async function sendToCoach(prompt: string, displayAsChat = true): Promise<string> {
     if (!userId) return 'Not logged in. Please refresh and try again.'
 
-    const msgs = displayAsChat
-      ? [...chatMessages.map(m => ({ role: m.role, content: m.content })), { role: 'user' as const, content: prompt }]
-      : [{ role: 'user' as const, content: prompt }]
-
     try {
       const res = await fetch('/api/transition-coach', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: msgs }),
+        body: JSON.stringify({
+          message: prompt,
+          conversationId: displayAsChat ? coachConversationId : undefined,
+        }),
       })
       const data = await res.json()
       if (!res.ok) {
         console.error('Transition coach error:', res.status, data)
         return data.message || 'Unable to generate plan. Try again.'
       }
+      // Track conversation ID from response
+      if (data.conversationId && !coachConversationId) {
+        setCoachConversationId(data.conversationId)
+      }
       return data.message || 'Unable to generate plan. Try again.'
     } catch (err) {
       console.error('Transition coach fetch error:', err)
       return 'Network error. Check your connection and try again.'
+    }
+  }
+
+  async function startNewCoachConversation() {
+    if (!userId) return
+    const res = await fetch('/api/conversations', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ coach: 'trish' }),
+    })
+    const data = await res.json()
+    if (data.conversation) {
+      setCoachConversationId(data.conversation.id)
+      setChatMessages([])
+      setCoachSummary(null)
+      setCoachMessageCount(0)
     }
   }
 
@@ -903,6 +945,41 @@ export default function Maintenance() {
         {/* ═══ COACH TAB ═══ */}
         {activeTab === 'coach' && (
           <div className="flex flex-col" style={{ height: 'calc(100vh - 220px)' }}>
+            {/* New conversation + summary controls */}
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                {coachSummary && (
+                  <button onClick={() => setShowCoachSummary(true)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#F5F8F3] rounded-full text-[10px] text-[#6B7A72] cursor-pointer hover:bg-[#EAF2EB] transition-all duration-300 border border-[#EAF2EB]">
+                    <BookOpen className="w-3 h-3" />
+                    {coachMessageCount} msgs summarized
+                  </button>
+                )}
+              </div>
+              <button onClick={startNewCoachConversation} title="New conversation"
+                className="p-2 rounded-xl text-[#6B7A72] hover:text-[#0D1F16] hover:bg-[#EAF2EB] cursor-pointer transition-all duration-300">
+                <Plus className="w-4 h-4" strokeWidth={2} />
+              </button>
+            </div>
+
+            {/* Coach summary modal */}
+            {showCoachSummary && coachSummary && (
+              <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setShowCoachSummary(false)}>
+                <div className="bg-white rounded-3xl p-6 max-w-md w-full max-h-[70vh] overflow-y-auto shadow-2xl" onClick={e => e.stopPropagation()}>
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-2">
+                      <BookOpen className="w-4 h-4 text-[#1F4B32]" />
+                      <h3 className="text-sm font-semibold text-[#0D1F16]">Conversation Summary</h3>
+                    </div>
+                    <button onClick={() => setShowCoachSummary(false)} className="p-1 rounded-lg hover:bg-[#F5F8F3] cursor-pointer transition-colors">
+                      <X className="w-4 h-4 text-[#6B7A72]" />
+                    </button>
+                  </div>
+                  <div className="text-sm text-[#0D1F16]/80 leading-relaxed whitespace-pre-wrap">{coachSummary}</div>
+                </div>
+              </div>
+            )}
+
             {/* Readiness score card */}
             <div className="bg-white rounded-3xl p-5 shadow-sm border border-[#EAF2EB] mb-4">
               <div className="flex items-center justify-between mb-3">

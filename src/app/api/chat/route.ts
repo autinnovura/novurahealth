@@ -2,6 +2,12 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { getAuthedUser, unauthorized } from '../../lib/auth'
 import { chatLimiter, checkRateLimit } from '../../lib/rate-limit'
+import {
+  getActiveConversation, createConversation, getRecentMessages,
+  getUserFacts, saveMessage, saveFact, maybeUpdateSummary,
+  buildContextSections, estimateTokens,
+  REMEMBER_FACT_TOOL, REMEMBER_FACT_PROMPT,
+} from '../../lib/conversations'
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || '',
@@ -181,16 +187,46 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Rate limit exceeded. Please slow down.' }, { status: 429 })
   }
 
-  let body: { messages?: any }
+  let body: { message?: string; conversationId?: string; messages?: any }
   try {
     body = await req.json()
   } catch {
     return NextResponse.json({ error: 'Invalid request body' }, { status: 400 })
   }
-  const { messages } = body
-  if (!messages?.length) {
+
+  // Support both new { message, conversationId } and legacy { messages } format
+  const newUserMessage = body.message || body.messages?.[body.messages.length - 1]?.content
+  if (!newUserMessage) {
     return NextResponse.json({ error: 'Missing data' }, { status: 400 })
   }
+
+  // ── Conversation + 3-layer memory ──────────────────
+  let conversation = body.conversationId
+    ? { id: body.conversationId, summary: null as string | null, message_count: 0 }
+    : await getActiveConversation(user.id, 'nova')
+
+  if (!conversation) {
+    conversation = await createConversation(user.id, 'nova')
+  }
+
+  // Layer 1: Last 15 messages (full text)
+  const recentMessages = await getRecentMessages(conversation.id)
+
+  // Layer 2: Mid-term summary (from conversation record)
+  if (!conversation.summary) {
+    const { data: convData } = await supabaseAdmin
+      .from('conversations')
+      .select('summary, message_count')
+      .eq('id', conversation.id)
+      .single()
+    if (convData) {
+      conversation.summary = convData.summary
+      conversation.message_count = convData.message_count
+    }
+  }
+
+  // Layer 3: Persistent user facts
+  const facts = await getUserFacts(user.id)
 
   // Pull all user context
   const context = await getUserContext(user.id)
@@ -198,9 +234,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'User not found' }, { status: 404 })
   }
 
+  const { factsSection, summarySection } = buildContextSections(facts, conversation.summary)
+
+  // Save the incoming user message
+  void saveMessage(user.id, conversation.id, 'user', newUserMessage)
+
   const systemPrompt = `You are Nova, the AI health coach inside NovuraHealth — a GLP-1 medication companion app. You have deep access to the user's personal health data and use it proactively to give highly specific, actionable coaching.
 
-${context}
+${context}${factsSection}${summarySection}
 
 ═══ YOUR COACHING APPROACH ═══
 
@@ -304,9 +345,13 @@ Max 1 question per response. Never more.
    - NEVER write more than 8 sentences in one message. If you catch yourself going long, cut it in half.
    - NEVER ask more than one question per message. Preferably zero — just answer.
    - Don't write paragraphs. If your message looks like an essay, you're doing it wrong.
-   - Don't give disclaimers, caveats, or "consult your doctor" on every single message — save that for actual medical decisions`
+   - Don't give disclaimers, caveats, or "consult your doctor" on every single message — save that for actual medical decisions
+
+10. MEMORY:
+   ${REMEMBER_FACT_PROMPT}`
 
   const tools = [
+    REMEMBER_FACT_TOOL,
     {
       name: 'log_food',
       description: 'Log a meal or food item when the user describes what they ate. Use this whenever the user mentions food they consumed.',
@@ -394,8 +439,25 @@ Max 1 question per response. Never more.
 
     // Tool-use loop: send message, execute any tool calls, repeat until text-only response
     const MAX_ITERATIONS = 5
-    const conversationMessages = [...messages.slice(-20)]
+    // Build Claude messages from recent DB messages + the new user message
+    const conversationMessages: any[] = recentMessages.map(m => ({
+      role: m.role, content: m.content,
+    }))
+    conversationMessages.push({ role: 'user', content: newUserMessage })
     let finalResponseText = ''
+
+    // Token budget logging
+    const recentTokens = estimateTokens(recentMessages.map(m => m.content).join(' '))
+    const summaryTokens = estimateTokens(conversation.summary || '')
+    const factsTokens = estimateTokens(facts.map(f => f.fact).join(' '))
+    console.log({
+      conversation_id: conversation.id,
+      recent_messages: recentMessages.length,
+      recent_tokens: recentTokens,
+      summary_tokens: summaryTokens,
+      facts_tokens: factsTokens,
+      total_context: recentTokens + summaryTokens + factsTokens,
+    })
 
     for (let i = 0; i < MAX_ITERATIONS; i++) {
       const res = await fetch('https://api.anthropic.com/v1/messages', {
@@ -457,7 +519,15 @@ Max 1 question per response. Never more.
     if (!finalResponseText) {
       return NextResponse.json({ message: "Nova is temporarily unavailable. Please try again." })
     }
-    return NextResponse.json({ message: finalResponseText })
+
+    // Save assistant response and trigger background summary
+    void saveMessage(user.id, conversation.id, 'assistant', finalResponseText)
+    void maybeUpdateSummary(conversation.id)
+
+    return NextResponse.json({
+      message: finalResponseText,
+      conversationId: conversation.id,
+    })
   } catch (error) {
     console.error('CHAT ROUTE ERROR:', error)
     return NextResponse.json({ message: "Nova is temporarily unavailable. Please try again." })
@@ -599,6 +669,12 @@ async function executeToolCall(
         })
         if (error) return { success: false, error: error.message }
         return { success: true, logged: 'exercise', exercise_type: input.exercise_type }
+      }
+
+      case 'remember_fact': {
+        const result = await saveFact(userId, input.category, input.fact, 'nova_auto')
+        if (!result.success) return { success: false, error: result.error }
+        return { success: true, saved: 'fact', category: input.category, fact: input.fact }
       }
 
       default:

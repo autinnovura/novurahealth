@@ -2,6 +2,12 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { getAuthedUser, unauthorized } from '../../lib/auth'
 import { chatLimiter, checkRateLimit } from '../../lib/rate-limit'
+import {
+  getActiveConversation, createConversation, getRecentMessages,
+  getUserFacts, saveMessage, saveFact, maybeUpdateSummary,
+  buildContextSections, estimateTokens,
+  REMEMBER_FACT_TOOL, REMEMBER_FACT_PROMPT,
+} from '../../lib/conversations'
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || '',
@@ -136,7 +142,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Rate limit exceeded', message: 'Too many requests. Please slow down and try again.' }, { status: 429 })
   }
 
-  let body: { messages?: { role: string; content: string }[]; action?: string }
+  let body: { message?: string; conversationId?: string; messages?: { role: string; content: string }[]; action?: string }
   try {
     body = await req.json()
   } catch (err: unknown) {
@@ -144,13 +150,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid request body', message: 'Unable to process request. Try again.' }, { status: 400 })
   }
 
-  const { messages } = body
-  if (!messages?.length) {
+  // Support both new { message, conversationId } and legacy { messages } format
+  const newUserMessage = body.message || body.messages?.[body.messages.length - 1]?.content
+  if (!newUserMessage) {
     return NextResponse.json({ error: 'Missing data', message: 'No message provided.' }, { status: 400 })
   }
 
   // ── Readiness gate for plan generation ────────────────
-  const lastMessage = messages[messages.length - 1]?.content?.toLowerCase() || ''
+  const lastMessage = newUserMessage.toLowerCase()
   const isPlanGeneration = body.action === 'generate_plan'
     || lastMessage.includes('generate my tapering plan')
     || lastMessage.includes('generate my complete tapering plan')
@@ -182,14 +189,61 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // ── 3-layer memory ────────────────────────────────────
+  let conversation = body.conversationId
+    ? { id: body.conversationId, summary: null as string | null, message_count: 0 }
+    : await getActiveConversation(user.id, 'trish')
+
+  if (!conversation) {
+    conversation = await createConversation(user.id, 'trish')
+  }
+
+  // Layer 1: Last 15 messages
+  const recentMessages = await getRecentMessages(conversation.id)
+
+  // Layer 2: Mid-term summary
+  if (!conversation.summary) {
+    const { data: convData } = await supabaseAdmin
+      .from('conversations')
+      .select('summary, message_count')
+      .eq('id', conversation.id)
+      .single()
+    if (convData) {
+      conversation.summary = convData.summary
+      conversation.message_count = convData.message_count
+    }
+  }
+
+  // Layer 3: Persistent user facts
+  const facts = await getUserFacts(user.id)
+
   const context = await getUserContext(user.id)
   if (!context) {
     return NextResponse.json({ error: 'User not found', message: 'Profile not found. Please complete onboarding.' }, { status: 404 })
   }
 
+  const { factsSection, summarySection } = buildContextSections(facts, conversation.summary)
+
+  // Save the incoming user message
+  void saveMessage(user.id, conversation.id, 'user', newUserMessage)
+
+  // Token budget logging
+  const recentTokens = estimateTokens(recentMessages.map(m => m.content).join(' '))
+  const summaryTokens = estimateTokens(conversation.summary || '')
+  const factsTokens = estimateTokens(facts.map(f => f.fact).join(' '))
+  console.log({
+    conversation_id: conversation.id,
+    coach: 'trish',
+    recent_messages: recentMessages.length,
+    recent_tokens: recentTokens,
+    summary_tokens: summaryTokens,
+    facts_tokens: factsTokens,
+    total_context: recentTokens + summaryTokens + factsTokens,
+  })
+
   const systemPrompt = `You are Trish, the NovuraHealth Transition Coach. You help GLP-1 users taper off medication, build sustainable habits, and maintain their results long-term. You're direct, confident, and you give plans — not questions. Think of yourself as a no-nonsense personal trainer who also knows nutrition and pharmacology.
 
-${context}
+${context}${factsSection}${summarySection}
 
 CORE RULE: GIVE ANSWERS. DO NOT INTERVIEW.
 You have their data. Use it. When asked for any plan, output the COMPLETE plan immediately. Let them refine after. Never ask more than one question, and only if truly critical data is missing.
@@ -305,9 +359,13 @@ Scale to their level: Beginner (bodyweight only), Intermediate (dumbbells), Adva
 
 TONE: Direct. Confident. No fluff. Use their actual numbers from the data above. Use line breaks for readability. No asterisks, no markdown bold/italic, no headers with #. Plain text with clean formatting. For simple questions, 2-4 sentences max. For full plans, output the complete structured plan.
 
-TOOLS: You have tools to save meal plans, workout plans, tapering plans, check-ins, food, weight, and exercise to the user's account. Use them aggressively — when the user says "save this", "add to my plan", "yes", "do it", or anything indicating they want to keep what you just generated, use the appropriate save tool. Never say "I can't save that" — you can. After saving, confirm briefly ("Saved to your Nutrition tab") then ask what's next.`
+TOOLS: You have tools to save meal plans, workout plans, tapering plans, check-ins, food, weight, and exercise to the user's account. Use them aggressively — when the user says "save this", "add to my plan", "yes", "do it", or anything indicating they want to keep what you just generated, use the appropriate save tool. Never say "I can't save that" — you can. After saving, confirm briefly ("Saved to your Nutrition tab") then ask what's next.
+
+MEMORY:
+${REMEMBER_FACT_PROMPT}`
 
   const tools = [
+    REMEMBER_FACT_TOOL,
     {
       name: 'save_meal_plan',
       description: 'Save a structured meal plan for the user. Use when the user wants to keep a meal plan.',
@@ -454,7 +512,11 @@ TOOLS: You have tools to save meal plans, workout plans, tapering plans, check-i
     }
 
     const MAX_ITERATIONS = 5
-    const conversationMessages: any[] = [...messages.slice(-20)]
+    // Build Claude messages from recent DB messages + the new user message
+    const conversationMessages: any[] = recentMessages.map(m => ({
+      role: m.role, content: m.content,
+    }))
+    conversationMessages.push({ role: 'user', content: newUserMessage })
     let finalResponseText = ''
 
     for (let i = 0; i < MAX_ITERATIONS; i++) {
@@ -515,7 +577,15 @@ TOOLS: You have tools to save meal plans, workout plans, tapering plans, check-i
     if (!finalResponseText) {
       return NextResponse.json({ error: 'Empty response', message: 'Trish is temporarily unavailable. Try again in a moment.' }, { status: 502 })
     }
-    return NextResponse.json({ message: finalResponseText })
+
+    // Save assistant response and trigger background summary
+    void saveMessage(user.id, conversation.id, 'assistant', finalResponseText)
+    void maybeUpdateSummary(conversation.id)
+
+    return NextResponse.json({
+      message: finalResponseText,
+      conversationId: conversation.id,
+    })
   } catch (err: unknown) {
     console.error('Tapering plan error:', err)
     return NextResponse.json({
@@ -657,6 +727,12 @@ async function executeToolCall(
         })
         if (error) return { success: false, error: error.message }
         return { success: true, logged: 'exercise', exercise_type: input.exercise_type }
+      }
+
+      case 'remember_fact': {
+        const result = await saveFact(userId, input.category, input.fact, 'trish_auto')
+        if (!result.success) return { success: false, error: result.error }
+        return { success: true, saved: 'fact', category: input.category, fact: input.fact }
       }
 
       default:

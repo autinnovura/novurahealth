@@ -6,7 +6,7 @@ import { supabase } from '../lib/supabase'
 import { toast } from 'sonner'
 import DataImport from '../components/DataImport'
 import BottomNav from '../components/BottomNav'
-import { ArrowLeft, ChevronRight, Download, Shield, AlertTriangle, User, Lock, Database, Syringe, Pill } from 'lucide-react'
+import { ArrowLeft, ChevronRight, Download, Shield, AlertTriangle, User, Lock, Database, Syringe, Pill, Brain, Pin, PinOff, Pencil, Trash2, Plus, MessageCircle, X } from 'lucide-react'
 import { getMedicationChoices, findMedicationByLabel } from '../lib/medications'
 
 interface Profile {
@@ -61,7 +61,18 @@ export default function Settings() {
   const [deleting, setDeleting] = useState(false)
 
   // Active section
-  const [activeSection, setActiveSection] = useState<'profile' | 'account' | 'preferences'>('profile')
+  const [activeSection, setActiveSection] = useState<'profile' | 'account' | 'memory' | 'preferences'>('profile')
+
+  // Memory section
+  const [facts, setFacts] = useState<any[]>([])
+  const [factsLoading, setFactsLoading] = useState(false)
+  const [editingFact, setEditingFact] = useState<string | null>(null)
+  const [editFactText, setEditFactText] = useState('')
+  const [newFactCategory, setNewFactCategory] = useState('other')
+  const [newFactText, setNewFactText] = useState('')
+  const [showAddFact, setShowAddFact] = useState(false)
+  const [conversations, setConversations] = useState<any[]>([])
+  const [conversationsLoading, setConversationsLoading] = useState(false)
 
   useEffect(() => {
     async function init() {
@@ -147,6 +158,86 @@ export default function Settings() {
     }
   }
 
+  async function loadFacts() {
+    setFactsLoading(true)
+    const res = await fetch('/api/user-facts')
+    const data = await res.json()
+    setFacts(data.facts || [])
+    setFactsLoading(false)
+  }
+
+  async function loadConversations() {
+    setConversationsLoading(true)
+    const [novaRes, trishRes] = await Promise.all([
+      fetch('/api/conversations?coach=nova&archived=true'),
+      fetch('/api/conversations?coach=trish&archived=true'),
+    ])
+    const [novaData, trishData] = await Promise.all([novaRes.json(), trishRes.json()])
+    setConversations([
+      ...(novaData.conversations || []).map((c: any) => ({ ...c, coachLabel: 'Nova' })),
+      ...(trishData.conversations || []).map((c: any) => ({ ...c, coachLabel: 'Trish' })),
+    ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()))
+    setConversationsLoading(false)
+  }
+
+  async function togglePin(factId: string, currentPinned: boolean) {
+    await fetch('/api/user-facts', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: factId, pinned: !currentPinned }),
+    })
+    setFacts(prev => prev.map(f => f.id === factId ? { ...f, pinned: !currentPinned } : f))
+  }
+
+  async function updateFact(factId: string) {
+    if (!editFactText.trim()) return
+    await fetch('/api/user-facts', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: factId, fact: editFactText }),
+    })
+    setFacts(prev => prev.map(f => f.id === factId ? { ...f, fact: editFactText } : f))
+    setEditingFact(null)
+    setEditFactText('')
+  }
+
+  async function deleteFact(factId: string) {
+    await fetch('/api/user-facts', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: factId, is_active: false }),
+    })
+    setFacts(prev => prev.filter(f => f.id !== factId))
+  }
+
+  async function addFact() {
+    if (!newFactText.trim()) return
+    const res = await fetch('/api/user-facts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ category: newFactCategory, fact: newFactText }),
+    })
+    const data = await res.json()
+    if (data.fact) {
+      setFacts(prev => [data.fact, ...prev])
+      setNewFactText('')
+      setShowAddFact(false)
+    }
+  }
+
+  async function deleteConversation(convId: string) {
+    await fetch(`/api/conversations?id=${convId}`, { method: 'DELETE' })
+    setConversations(prev => prev.filter(c => c.id !== convId))
+  }
+
+  // Load facts when memory tab is opened
+  useEffect(() => {
+    if (activeSection === 'memory' && facts.length === 0 && !factsLoading) {
+      loadFacts()
+      loadConversations()
+    }
+  }, [activeSection])
+
   async function exportData() {
     if (!userId) return
     const [weights, meds, foods, effects, water, checkins, exercises] = await Promise.all([
@@ -206,6 +297,7 @@ export default function Settings() {
           {([
             { id: 'profile' as const, label: 'Profile', icon: User },
             { id: 'account' as const, label: 'Account', icon: Lock },
+            { id: 'memory' as const, label: 'Memory', icon: Brain },
             { id: 'preferences' as const, label: 'Data', icon: Database },
           ]).map(tab => (
             <button key={tab.id} onClick={() => setActiveSection(tab.id)}
@@ -434,6 +526,139 @@ export default function Settings() {
                     {deleting ? 'Deleting...' : 'Delete My Account'}
                   </button>
                 </div>
+              </div>
+            )}
+          </div>
+        </>)}
+
+        {/* ══════════ MEMORY ══════════ */}
+        {activeSection === 'memory' && (<>
+          {/* What Nova remembers */}
+          <div className="bg-white border border-[#EAF2EB] rounded-3xl shadow-[0_4px_24px_-8px_rgba(31,75,50,0.08)] p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-[#0D1F16]" style={{ fontFamily: 'var(--font-fraunces)' }}>What Nova remembers about you</h2>
+              <button onClick={() => setShowAddFact(!showAddFact)}
+                className="p-1.5 rounded-xl text-[#6B7A72] hover:text-[#1F4B32] hover:bg-[#EAF2EB] cursor-pointer transition-all duration-300">
+                <Plus className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Add fact form */}
+            {showAddFact && (
+              <div className="bg-[#F5F8F3] rounded-2xl p-4 space-y-3">
+                <select value={newFactCategory} onChange={e => setNewFactCategory(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl border border-[#EAF2EB] text-xs text-[#0D1F16] bg-white outline-none focus:border-[#1F4B32] transition-all duration-300">
+                  <option value="preference">Preference</option>
+                  <option value="health">Health</option>
+                  <option value="goal">Goal</option>
+                  <option value="context">Context</option>
+                  <option value="allergy">Allergy</option>
+                  <option value="routine">Routine</option>
+                  <option value="other">Other</option>
+                </select>
+                <input type="text" value={newFactText} onChange={e => setNewFactText(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && addFact()}
+                  placeholder='e.g. "Prefers high-protein breakfasts"'
+                  className="w-full px-3 py-2 rounded-xl border border-[#EAF2EB] text-sm text-[#0D1F16] outline-none focus:border-[#1F4B32] placeholder:text-[#6B7A72]/40 transition-all duration-300" />
+                <div className="flex gap-2">
+                  <button onClick={() => { setShowAddFact(false); setNewFactText('') }}
+                    className="flex-1 py-2 rounded-xl border border-[#EAF2EB] text-xs text-[#6B7A72] font-medium cursor-pointer hover:bg-white transition-all duration-300">Cancel</button>
+                  <button onClick={addFact} disabled={!newFactText.trim()}
+                    className="flex-1 py-2 rounded-xl bg-gradient-to-r from-[#1F4B32] to-[#2D6B45] text-white text-xs font-semibold cursor-pointer disabled:opacity-30 transition-all duration-300">Add</button>
+                </div>
+              </div>
+            )}
+
+            {factsLoading ? (
+              <div className="space-y-2">
+                {[1, 2, 3].map(i => <div key={i} className="h-12 rounded-2xl bg-[#EAF2EB]/60 animate-pulse" />)}
+              </div>
+            ) : facts.length === 0 ? (
+              <p className="text-xs text-[#6B7A72] text-center py-6">Nova hasn't learned anything about you yet. Start chatting and she'll remember important details automatically.</p>
+            ) : (
+              <div className="space-y-2">
+                {facts.map(fact => (
+                  <div key={fact.id} className="flex items-start gap-2 p-3 rounded-2xl border border-[#EAF2EB] hover:bg-[#F5F8F3] transition-all duration-300">
+                    {editingFact === fact.id ? (
+                      <div className="flex-1 space-y-2">
+                        <input type="text" value={editFactText} onChange={e => setEditFactText(e.target.value)}
+                          onKeyDown={e => e.key === 'Enter' && updateFact(fact.id)}
+                          className="w-full px-3 py-2 rounded-xl border border-[#EAF2EB] text-sm text-[#0D1F16] outline-none focus:border-[#1F4B32] transition-all duration-300"
+                          autoFocus />
+                        <div className="flex gap-2">
+                          <button onClick={() => setEditingFact(null)} className="text-[10px] text-[#6B7A72] cursor-pointer">Cancel</button>
+                          <button onClick={() => updateFact(fact.id)} className="text-[10px] text-[#1F4B32] font-semibold cursor-pointer">Save</button>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5 mb-0.5">
+                            <span className="text-[9px] font-bold text-[#1F4B32] bg-[#EAF2EB] px-1.5 py-0.5 rounded uppercase">{fact.category}</span>
+                            {fact.source !== 'manual' && (
+                              <span className="text-[9px] text-[#6B7A72]">auto-saved</span>
+                            )}
+                          </div>
+                          <p className="text-sm text-[#0D1F16]">{fact.fact}</p>
+                        </div>
+                        <div className="flex items-center gap-0.5 shrink-0">
+                          <button onClick={() => togglePin(fact.id, fact.pinned)} title={fact.pinned ? 'Unpin' : 'Pin'}
+                            className={`p-1.5 rounded-lg cursor-pointer transition-all duration-300 ${fact.pinned ? 'text-[#1F4B32] bg-[#EAF2EB]' : 'text-[#6B7A72] hover:text-[#1F4B32] hover:bg-[#EAF2EB]'}`}>
+                            {fact.pinned ? <PinOff className="w-3 h-3" /> : <Pin className="w-3 h-3" />}
+                          </button>
+                          <button onClick={() => { setEditingFact(fact.id); setEditFactText(fact.fact) }} title="Edit"
+                            className="p-1.5 rounded-lg text-[#6B7A72] hover:text-[#1F4B32] hover:bg-[#EAF2EB] cursor-pointer transition-all duration-300">
+                            <Pencil className="w-3 h-3" />
+                          </button>
+                          <button onClick={() => deleteFact(fact.id)} title="Delete"
+                            className="p-1.5 rounded-lg text-[#6B7A72] hover:text-red-500 hover:bg-red-50 cursor-pointer transition-all duration-300">
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Previous conversations */}
+          <div className="bg-white border border-[#EAF2EB] rounded-3xl shadow-[0_4px_24px_-8px_rgba(31,75,50,0.08)] p-6 space-y-4">
+            <h2 className="text-sm font-semibold text-[#0D1F16]" style={{ fontFamily: 'var(--font-fraunces)' }}>Previous Conversations</h2>
+            {conversationsLoading ? (
+              <div className="space-y-2">
+                {[1, 2, 3].map(i => <div key={i} className="h-16 rounded-2xl bg-[#EAF2EB]/60 animate-pulse" />)}
+              </div>
+            ) : conversations.length === 0 ? (
+              <p className="text-xs text-[#6B7A72] text-center py-6">No previous conversations yet.</p>
+            ) : (
+              <div className="space-y-2">
+                {conversations.map(conv => (
+                  <div key={conv.id} className="flex items-center gap-3 p-3 rounded-2xl border border-[#EAF2EB] hover:bg-[#F5F8F3] transition-all duration-300">
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${
+                      conv.coachLabel === 'Nova'
+                        ? 'bg-gradient-to-br from-[#1F4B32] to-[#2D6B45]'
+                        : 'bg-gradient-to-br from-[#C4742B] to-[#D4843B]'
+                    }`}>
+                      <MessageCircle className="w-4 h-4 text-white" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[9px] font-bold uppercase text-[#6B7A72]">{conv.coachLabel}</span>
+                        <span className="text-[9px] text-[#6B7A72]">{conv.message_count} messages</span>
+                      </div>
+                      <p className="text-sm text-[#0D1F16] truncate">{conv.preview}</p>
+                      <p className="text-[10px] text-[#6B7A72]">
+                        {new Date(conv.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                      </p>
+                    </div>
+                    <button onClick={() => deleteConversation(conv.id)} title="Delete permanently"
+                      className="p-1.5 rounded-lg text-[#6B7A72] hover:text-red-500 hover:bg-red-50 cursor-pointer transition-all duration-300 shrink-0">
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
               </div>
             )}
           </div>

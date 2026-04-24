@@ -64,13 +64,17 @@ function getGreeting(): string {
 }
 
 function relativeTime(d: string): string {
-  const diff = Date.now() - new Date(d).getTime()
+  const now = new Date()
+  const date = new Date(d)
+  const diff = now.getTime() - date.getTime()
   const mins = Math.floor(diff / 60000)
   if (mins < 1) return 'just now'
   if (mins < 60) return `${mins}m ago`
   const hrs = Math.floor(mins / 60)
   if (hrs < 24) return `${hrs}h ago`
   const days = Math.floor(hrs / 24)
+  if (days === 1) return 'Yesterday'
+  if (days < 7) return date.toLocaleDateString('en-US', { weekday: 'short' })
   return `${days}d ago`
 }
 
@@ -573,15 +577,26 @@ export default function Dashboard() {
     return 'Your health journey starts with showing up.'
   })()
 
-  // Build recent activity feed
+  // Build recent activity feed — all log types, last 7 days
+  const sevenDaysAgo = addDays(new Date(), -7)
   const activityFeed = [
-    ...todayFoodLogs.map(f => ({ icon: 'food' as const, text: `Logged ${f.food_name}`, time: f.logged_at })),
-    ...waterLogs.map(w => ({ icon: 'water' as const, text: `Drank ${w.amount_oz}oz water`, time: w.logged_at })),
-    ...medLogs.filter(m => isToday(new Date(m.logged_at))).map(m => ({ icon: 'med' as const, text: `${m.medication} ${m.dose}`, time: m.logged_at })),
-    ...exerciseLogs.filter(e => isToday(new Date(e.logged_at))).map(e => ({ icon: 'exercise' as const, text: `${e.exercise_type} · ${e.duration_minutes}min`, time: e.logged_at })),
-  ].sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime()).slice(0, 6)
+    ...todayFoodLogs.map(f => ({ type: 'food' as const, text: `Logged ${f.food_name}`, time: f.logged_at })),
+    ...allFoodLogs.filter(f => new Date(f.logged_at) >= sevenDaysAgo && !todayFoodLogs.some(t => t.id === f.id)).map(f => ({ type: 'food' as const, text: `Logged ${f.food_name}`, time: f.logged_at })),
+    ...waterLogs.map(w => ({ type: 'water' as const, text: `${w.amount_oz}oz water`, time: w.logged_at })),
+    ...medLogs.filter(m => new Date(m.logged_at) >= sevenDaysAgo).map(m => ({ type: 'med' as const, text: `Took ${m.medication} ${m.dose}`, time: m.logged_at })),
+    ...exerciseLogs.filter(e => new Date(e.logged_at) >= sevenDaysAgo).map(e => ({ type: 'exercise' as const, text: `${e.exercise_type} — ${e.duration_minutes}min`, time: e.logged_at })),
+    ...sideEffectLogs.filter(s => new Date(s.logged_at) >= sevenDaysAgo).map(s => ({ type: 'side_effect' as const, text: `Felt ${s.symptom}`, time: s.logged_at })),
+    ...checkinLogs.filter(c => new Date(c.logged_at) >= sevenDaysAgo).map(c => ({ type: 'checkin' as const, text: `Check-in: mood ${c.mood}/5, energy ${c.energy}/5`, time: c.logged_at })),
+  ].sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime()).slice(0, 10)
 
-  const activityIcons = { food: Utensils, water: Droplets, med: Syringe, exercise: Dumbbell }
+  const activityConfig: Record<string, { icon: any; bg: string; iconColor: string }> = {
+    food: { icon: Utensils, bg: 'bg-amber-50', iconColor: 'text-amber-600' },
+    water: { icon: Droplets, bg: 'bg-cyan-50', iconColor: 'text-cyan-600' },
+    med: { icon: Syringe, bg: 'bg-[#F5F8F3]', iconColor: 'text-[#1F4B32]' },
+    exercise: { icon: Dumbbell, bg: 'bg-purple-50', iconColor: 'text-purple-600' },
+    side_effect: { icon: Stethoscope, bg: 'bg-pink-50', iconColor: 'text-pink-600' },
+    checkin: { icon: Sparkles, bg: 'bg-blue-50', iconColor: 'text-blue-600' },
+  }
 
   // Next injection day name
   const nextInjDayName = daysUntilInj !== null ? (daysUntilInj === 0 ? 'Today' : daysUntilInj === 1 ? 'Tomorrow' : new Date(Date.now() + daysUntilInj * 86400000).toLocaleDateString('en-US', { weekday: 'short' })) : '—'
@@ -866,31 +881,33 @@ export default function Dashboard() {
           </motion.div>
 
           {/* Recent activity feed */}
-          {activityFeed.length > 0 && (
-            <motion.div variants={fadeUp} className="bg-white rounded-3xl p-5 shadow-[0_4px_24px_-8px_rgba(31,75,50,0.08)] border border-[#EAF2EB]">
-              <p className="text-[10px] font-semibold text-[#6B7A72] uppercase tracking-wider mb-4">Today&apos;s Activity</p>
-              <div className="relative">
-                <div className="absolute left-[15px] top-2 bottom-2 w-px bg-[#EAF2EB]" />
-                <div className="space-y-3">
-                  {activityFeed.map((item, i) => {
-                    const Icon = activityIcons[item.icon]
-                    return (
-                      <div key={i} className="flex items-center gap-3 relative">
-                        <div className="w-[31px] h-[31px] rounded-full bg-[#F5F8F3] border-2 border-white flex items-center justify-center z-10 shrink-0">
-                          <Icon className="w-3.5 h-3.5 text-[#1F4B32]" strokeWidth={1.5} />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm text-[#0D1F16] truncate">{item.text}</p>
-                        </div>
-                        <span className="text-[10px] text-[#6B7A72]/60 shrink-0">{relativeTime(item.time)}</span>
-                      </div>
-                    )
-                  })}
-                </div>
-                <div className="absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-white to-transparent pointer-events-none" />
+          <motion.div variants={fadeUp} className="bg-white rounded-3xl p-5 shadow-[0_4px_24px_-8px_rgba(31,75,50,0.08)] border border-[#EAF2EB]">
+            <p className="text-[10px] font-semibold text-[#6B7A72] uppercase tracking-wider mb-4">Recent Activity</p>
+            {activityFeed.length === 0 ? (
+              <div className="text-center py-6">
+                <p className="text-sm text-[#6B7A72]">Nothing logged yet this week.</p>
+                <p className="text-xs text-[#6B7A72]/60 mt-1">Tap a quick action above to get started.</p>
               </div>
-            </motion.div>
-          )}
+            ) : (
+              <div className="space-y-0">
+                {activityFeed.map((item, i) => {
+                  const config = activityConfig[item.type]
+                  const Icon = config.icon
+                  return (
+                    <div key={i} className={`flex items-center justify-between py-3 ${i < activityFeed.length - 1 ? 'border-b border-[#EAF2EB]' : ''}`}>
+                      <div className="flex items-center gap-3 min-w-0 flex-1">
+                        <div className={`w-8 h-8 rounded-full ${config.bg} flex items-center justify-center shrink-0`}>
+                          <Icon className={`w-4 h-4 ${config.iconColor}`} strokeWidth={1.5} />
+                        </div>
+                        <span className="text-[15px] text-[#0D1F16] font-medium truncate">{item.text}</span>
+                      </div>
+                      <span className="text-xs text-[#6B7A72] tabular-nums shrink-0 ml-3">{relativeTime(item.time)}</span>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </motion.div>
 
           {/* Chat with Nova */}
           <motion.a variants={fadeUp} href="/chat" className="block bg-white border border-[#EAF2EB] rounded-3xl p-5 hover:-translate-y-0.5 hover:shadow-[0_8px_32px_-8px_rgba(31,75,50,0.15)] transition-all duration-300">
