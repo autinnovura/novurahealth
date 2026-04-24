@@ -156,7 +156,6 @@ export default function Maintenance() {
 
   // Phase info
   const [phaseInfoOpen, setPhaseInfoOpen] = useState<Phase | null>(null)
-  const [isDesktop, setIsDesktop] = useState(false)
   const [latestMedDose, setLatestMedDose] = useState<number | null>(null)
   const [daysSinceLastDose, setDaysSinceLastDose] = useState<number | null>(null)
 
@@ -220,14 +219,6 @@ export default function Maintenance() {
     }
     window.visualViewport?.addEventListener('resize', handler)
     return () => window.visualViewport?.removeEventListener('resize', handler)
-  }, [])
-
-  useEffect(() => {
-    const mq = window.matchMedia('(min-width: 640px)')
-    setIsDesktop(mq.matches)
-    const handler = (e: MediaQueryListEvent) => setIsDesktop(e.matches)
-    mq.addEventListener('change', handler)
-    return () => mq.removeEventListener('change', handler)
   }, [])
 
   useEffect(() => {
@@ -467,7 +458,7 @@ export default function Maintenance() {
         </div>
       </header>
 
-      {/* Phase info — responsive modal (desktop) / bottom sheet (mobile) */}
+      {/* Phase info — centered modal on all viewports */}
       <AnimatePresence>
         {phaseInfoOpen && (() => {
           const infoIdx = PHASES.findIndex(p => p.id === phaseInfoOpen)
@@ -478,63 +469,49 @@ export default function Maintenance() {
             ? 'bg-gradient-to-r from-[#1F4B32] to-[#2D6B45]'
             : isCurrent ? 'bg-[#7FFFA4]' : 'bg-[#F5F8F3] border-2 border-[#EAF2EB]'
 
-          const content = (
-            <>
-              <div className="flex justify-between items-start mb-4">
-                <div className="flex items-center gap-3">
-                  <div className={`w-10 h-10 rounded-full flex items-center justify-center ${dotClass}`}>
-                    {isComplete ? (
-                      <Check className="w-5 h-5 text-white" strokeWidth={2.5} />
-                    ) : isCurrent ? (
-                      <div className="w-3 h-3 rounded-full bg-[#1F4B32]" />
-                    ) : (
-                      <div className="w-2.5 h-2.5 rounded-full bg-[#6B7A72]/30" />
-                    )}
-                  </div>
-                  <div>
-                    <h3 className="text-base font-bold text-[#0D1F16]" style={{ fontFamily: 'var(--font-fraunces)' }}>{PHASES.find(p => p.id === phaseInfoOpen)?.label}</h3>
-                    <p className="text-[10px] text-[#6B7A72] uppercase font-semibold tracking-wider">{statusLabel}</p>
-                  </div>
-                </div>
-                <button onClick={() => setPhaseInfoOpen(null)} className="p-2 rounded-full hover:bg-[#F5F8F3] transition-colors cursor-pointer">
-                  <X className="w-4 h-4 text-[#6B7A72]" />
-                </button>
-              </div>
-              <p className="text-sm text-[#0D1F16]/80 leading-relaxed">{PHASE_INFO[phaseInfoOpen]}</p>
-            </>
-          )
-
           return (
             <>
               <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50"
+                transition={{ duration: 0.2 }}
+                className="fixed inset-0 bg-black/50 backdrop-blur-sm z-40"
                 onClick={() => setPhaseInfoOpen(null)}
               />
-              {isDesktop ? (
-                <motion.div
-                  initial={{ opacity: 0, scale: 0.95 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.95 }}
-                  transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
-                  className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-[90vw] max-w-md bg-white rounded-3xl shadow-2xl border border-[#EAF2EB] p-6"
-                >
-                  {content}
-                </motion.div>
-              ) : (
-                <motion.div
-                  initial={{ y: '100%' }}
-                  animate={{ y: 0 }}
-                  exit={{ y: '100%' }}
-                  transition={{ type: 'spring', damping: 30, stiffness: 300 }}
-                  className="fixed bottom-0 left-0 right-0 z-50 bg-white rounded-t-3xl shadow-[0_-8px_32px_rgba(0,0,0,0.15)] p-6 pb-10"
-                >
-                  <div className="w-12 h-1 bg-[#D0D0CA] rounded-full mx-auto mb-4" />
-                  {content}
-                </motion.div>
-              )}
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95, y: 10 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: 10 }}
+                transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+                className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-[92vw] max-w-md bg-white rounded-3xl shadow-2xl border border-[#EAF2EB] overflow-hidden"
+              >
+                <div className="p-6 pb-4">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex items-center gap-3">
+                      <div className={`w-12 h-12 rounded-full flex items-center justify-center shrink-0 ${dotClass}`}>
+                        {isComplete ? (
+                          <Check className="w-5 h-5 text-white" strokeWidth={2.5} />
+                        ) : isCurrent ? (
+                          <div className="w-3 h-3 rounded-full bg-[#1F4B32]" />
+                        ) : (
+                          <div className="w-2.5 h-2.5 rounded-full bg-[#6B7A72]/30" />
+                        )}
+                      </div>
+                      <div>
+                        <h3 className="text-2xl text-[#0D1F16]" style={{ fontFamily: 'var(--font-fraunces)' }}>{PHASES.find(p => p.id === phaseInfoOpen)?.label}</h3>
+                        <p className="text-xs text-[#6B7A72] uppercase tracking-wider mt-0.5">{statusLabel}</p>
+                      </div>
+                    </div>
+                    <button onClick={() => setPhaseInfoOpen(null)} className="p-2 -m-2 rounded-full hover:bg-[#F5F8F3] transition-colors cursor-pointer shrink-0" aria-label="Close">
+                      <X className="w-5 h-5 text-[#6B7A72]" />
+                    </button>
+                  </div>
+                </div>
+                <div className="px-6 pb-6">
+                  <p className="text-[15px] leading-relaxed text-[#0D1F16]">{PHASE_INFO[phaseInfoOpen]}</p>
+                </div>
+              </motion.div>
             </>
           )
         })()}
