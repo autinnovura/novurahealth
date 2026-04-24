@@ -504,7 +504,16 @@ export default function Savings() {
             </div>
 
             <div className="flex gap-2 bg-white/70 backdrop-blur-xl border border-[#EAF2EB] rounded-2xl p-2 shadow-[0_4px_24px_-8px_rgba(31,75,50,0.08)]">
-              <input type="text" autoComplete="off" value={chatInput} onChange={e => setChatInput(e.target.value)}
+              <input type="text"
+                name="savings-message"
+                autoComplete="off"
+                autoCorrect="on"
+                autoCapitalize="sentences"
+                spellCheck={true}
+                data-form-type="other"
+                data-1p-ignore="true"
+                data-lpignore="true"
+                value={chatInput} onChange={e => setChatInput(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && sendChat()}
                 placeholder="Ask about savings, insurance, appeals..."
                 className="flex-1 px-3 py-2.5 bg-transparent text-sm text-[#0D1F16] outline-none placeholder:text-[#6B7A72]/40" />

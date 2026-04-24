@@ -133,17 +133,25 @@ export async function POST(req: NextRequest) {
 
   const { success: allowed } = await checkRateLimit(chatLimiter, user.id)
   if (!allowed) {
-    return NextResponse.json({ error: 'Rate limit exceeded. Please slow down.' }, { status: 429 })
+    return NextResponse.json({ error: 'Rate limit exceeded', message: 'Too many requests. Please slow down and try again.' }, { status: 429 })
   }
 
-  const { messages } = await req.json()
+  let body: { messages?: { role: string; content: string }[] }
+  try {
+    body = await req.json()
+  } catch (err: unknown) {
+    console.error('Transition coach body parse error:', err)
+    return NextResponse.json({ error: 'Invalid request body', message: 'Unable to process request. Try again.' }, { status: 400 })
+  }
+
+  const { messages } = body
   if (!messages?.length) {
-    return NextResponse.json({ error: 'Missing data' }, { status: 400 })
+    return NextResponse.json({ error: 'Missing data', message: 'No message provided.' }, { status: 400 })
   }
 
   const context = await getUserContext(user.id)
   if (!context) {
-    return NextResponse.json({ error: 'User not found' }, { status: 404 })
+    return NextResponse.json({ error: 'User not found', message: 'Profile not found. Please complete onboarding.' }, { status: 404 })
   }
 
   const systemPrompt = `You are Trish, the NovuraHealth Transition Coach. You help GLP-1 users taper off medication, build sustainable habits, and maintain their results long-term. You're direct, confident, and you give plans — not questions. Think of yourself as a no-nonsense personal trainer who also knows nutrition and pharmacology.
@@ -274,23 +282,38 @@ TONE: Direct. Confident. No fluff. Use their actual numbers from the data above.
       },
       body: JSON.stringify({
         model: 'claude-sonnet-4-20250514',
-        max_tokens: 1500,
+        max_tokens: 4000,
         system: systemPrompt,
         messages: messages.slice(-20),
       }),
     })
 
     if (!res.ok) {
-      return NextResponse.json({ message: "Trish is temporarily unavailable. Try again in a moment." })
+      const errBody = await res.text().catch(() => 'unknown')
+      console.error('Anthropic API error:', res.status, errBody)
+      return NextResponse.json({
+        error: 'API error',
+        message: 'Trish is temporarily unavailable. Try again in a moment.',
+        debug: process.env.NODE_ENV === 'development' ? errBody : undefined,
+      }, { status: 502 })
     }
 
     const result = await res.json()
     const reply = result.content?.[0]?.text
     if (!reply) {
-      return NextResponse.json({ message: "Trish is temporarily unavailable. Try again in a moment." })
+      console.error('Anthropic API returned empty content:', JSON.stringify(result))
+      return NextResponse.json({
+        error: 'Empty response',
+        message: 'Trish is temporarily unavailable. Try again in a moment.',
+      }, { status: 502 })
     }
     return NextResponse.json({ message: reply })
-  } catch {
-    return NextResponse.json({ message: "Trish is temporarily unavailable. Try again in a moment." })
+  } catch (err: unknown) {
+    console.error('Tapering plan error:', err)
+    return NextResponse.json({
+      error: 'Unable to generate plan',
+      message: 'Trish is temporarily unavailable. Try again in a moment.',
+      debug: process.env.NODE_ENV === 'development' ? (err instanceof Error ? err.message : String(err)) : undefined,
+    }, { status: 500 })
   }
 }

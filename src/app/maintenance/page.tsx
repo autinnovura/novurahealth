@@ -161,58 +161,90 @@ export default function Maintenance() {
 
   // ── Coach API ─────────────────────────────────────────
   async function sendToCoach(prompt: string, displayAsChat = true): Promise<string> {
-    if (!userId) return ''
+    if (!userId) return 'Not logged in. Please refresh and try again.'
 
     const msgs = displayAsChat
       ? [...chatMessages.map(m => ({ role: m.role, content: m.content })), { role: 'user' as const, content: prompt }]
       : [{ role: 'user' as const, content: prompt }]
 
-    const res = await fetch('/api/transition-coach', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messages: msgs }),
-    })
-    const { message } = await res.json()
-    return message || 'Unable to generate plan. Try again.'
+    try {
+      const res = await fetch('/api/transition-coach', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: msgs }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        console.error('Transition coach error:', res.status, data)
+        return data.message || 'Unable to generate plan. Try again.'
+      }
+      return data.message || 'Unable to generate plan. Try again.'
+    } catch (err) {
+      console.error('Transition coach fetch error:', err)
+      return 'Network error. Check your connection and try again.'
+    }
   }
 
   // ── Generators ────────────────────────────────────────
   async function generateTaperPlan() {
     setGenerating('taper')
-    const durationLabel = TAPER_DURATIONS.find(d => d.id === taperDuration)?.label || '90 Days'
-    const result = await sendToCoach(`Generate my complete tapering plan based on all my data. The user wants a ${durationLabel} tapering timeline. Include specific phases with exact week ranges, dose changes at each step, protein/exercise targets, red flags to watch for, and what to do if things go wrong. Make it personal to my medication, dose, weight, and habits.`, false)
-    setTaperPlan(result)
-    setGenerating(null)
+    try {
+      const durationLabel = TAPER_DURATIONS.find(d => d.id === taperDuration)?.label || '90 Days'
+      const result = await sendToCoach(`Generate my complete tapering plan based on all my data. The user wants a ${durationLabel} tapering timeline. Include specific phases with exact week ranges, dose changes at each step, protein/exercise targets, red flags to watch for, and what to do if things go wrong. Make it personal to my medication, dose, weight, and habits.`, false)
+      setTaperPlan(result)
+    } catch (err) {
+      console.error('generateTaperPlan error:', err)
+      setTaperPlan('Unable to generate plan. Please try again.')
+    } finally {
+      setGenerating(null)
+    }
   }
 
   async function generateMealPlan() {
     setGenerating('meal')
-    const prompt = mealPlanType === 'weekly'
-      ? 'Create a complete weekly meal plan for me. 7 days. Hit my protein target each day. Use foods I actually eat based on my food logs.'
-      : 'Create a complete daily meal plan for me. Breakfast, lunch, snack, dinner. Hit my protein target. Use foods I actually eat.'
-    const result = await sendToCoach(prompt, false)
-    setMealPlan(result)
-    // Save to localStorage (keep last 3)
-    const updated = [result, ...savedMealPlans].slice(0, 3)
-    setSavedMealPlans(updated)
-    try { localStorage.setItem('novura_saved_meals', JSON.stringify(updated)) } catch { /* ignore */ }
-    setGenerating(null)
+    try {
+      const prompt = mealPlanType === 'weekly'
+        ? 'Create a complete weekly meal plan for me. 7 days. Hit my protein target each day. Use foods I actually eat based on my food logs.'
+        : 'Create a complete daily meal plan for me. Breakfast, lunch, snack, dinner. Hit my protein target. Use foods I actually eat.'
+      const result = await sendToCoach(prompt, false)
+      setMealPlan(result)
+      const updated = [result, ...savedMealPlans].slice(0, 3)
+      setSavedMealPlans(updated)
+      try { localStorage.setItem('novura_saved_meals', JSON.stringify(updated)) } catch { /* ignore */ }
+    } catch (err) {
+      console.error('generateMealPlan error:', err)
+      setMealPlan('Unable to generate meal plan. Please try again.')
+    } finally {
+      setGenerating(null)
+    }
   }
 
   async function generateRecipe() {
     if (!recipeInput.trim()) return
     setGenerating('recipe')
-    const result = await sendToCoach(`Give me a recipe for ${recipeInput}. Include ingredients, steps, prep time, and macros per serving.`, false)
-    setMealPlan(result)
-    setRecipeInput('')
-    setGenerating(null)
+    try {
+      const result = await sendToCoach(`Give me a recipe for ${recipeInput}. Include ingredients, steps, prep time, and macros per serving.`, false)
+      setMealPlan(result)
+      setRecipeInput('')
+    } catch (err) {
+      console.error('generateRecipe error:', err)
+      setMealPlan('Unable to generate recipe. Please try again.')
+    } finally {
+      setGenerating(null)
+    }
   }
 
   async function generateExercisePlan() {
     setGenerating('exercise')
-    const result = await sendToCoach(`Create a complete weekly exercise plan for me. My fitness level is ${fitnessLevel}. Equipment available: ${equipment}. Include specific exercises, sets, and reps for each day.`, false)
-    setExercisePlan(result)
-    setGenerating(null)
+    try {
+      const result = await sendToCoach(`Create a complete weekly exercise plan for me. My fitness level is ${fitnessLevel}. Equipment available: ${equipment}. Include specific exercises, sets, and reps for each day.`, false)
+      setExercisePlan(result)
+    } catch (err) {
+      console.error('generateExercisePlan error:', err)
+      setExercisePlan('Unable to generate exercise plan. Please try again.')
+    } finally {
+      setGenerating(null)
+    }
   }
 
   // ── PDF Export ────────────────────────────────────────
@@ -531,7 +563,13 @@ export default function Maintenance() {
           <div className="bg-white border border-[#EAF2EB] rounded-3xl p-6 space-y-3 shadow-[0_4px_24px_-8px_rgba(31,75,50,0.08)]">
             <h3 className="text-sm font-semibold text-[#0D1F16]">Get a Recipe</h3>
             <div className="flex gap-2">
-              <input type="text" autoComplete="off" value={recipeInput} onChange={e => setRecipeInput(e.target.value)}
+              <input type="text"
+                name="recipe-search"
+                autoComplete="off"
+                data-form-type="other"
+                data-1p-ignore="true"
+                data-lpignore="true"
+                value={recipeInput} onChange={e => setRecipeInput(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && generateRecipe()}
                 placeholder="e.g. high-protein chicken stir fry"
                 className="flex-1 px-3 py-2.5 rounded-2xl border border-[#EAF2EB] text-sm text-[#0D1F16] outline-none focus:border-[#1F4B32] placeholder:text-[#6B7A72]/50 transition-all duration-300"/>
@@ -686,8 +724,17 @@ export default function Maintenance() {
               )}
             </div>
 
-            <div className="flex gap-2 bg-white/80 backdrop-blur-md rounded-2xl p-2 border border-[#EAF2EB]">
-              <input type="text" autoComplete="off" value={chatInput} onChange={e => setChatInput(e.target.value)}
+            <form autoComplete="off" onSubmit={e => { e.preventDefault(); sendChat() }} className="flex gap-2 bg-white/80 backdrop-blur-md rounded-2xl p-2 border border-[#EAF2EB]">
+              <input type="text"
+                name="trish-message"
+                autoComplete="off"
+                autoCorrect="on"
+                autoCapitalize="sentences"
+                spellCheck={true}
+                data-form-type="other"
+                data-1p-ignore="true"
+                data-lpignore="true"
+                value={chatInput} onChange={e => setChatInput(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && sendChat()}
                 placeholder="Ask Trish anything..." autoFocus
                 className="flex-1 px-3 py-2.5 bg-transparent text-sm text-[#0D1F16] outline-none placeholder:text-[#6B7A72]/50"/>
@@ -696,7 +743,7 @@ export default function Maintenance() {
                 className="bg-gradient-to-r from-[#1F4B32] to-[#2D6B45] text-white px-5 py-2.5 rounded-xl text-sm font-semibold cursor-pointer disabled:opacity-30 transition-all duration-300 hover:shadow-[0_4px_16px_-4px_rgba(31,75,50,0.4)]">
                 Send
               </button>
-            </div>
+            </form>
           </div>
         )}
       </div>
