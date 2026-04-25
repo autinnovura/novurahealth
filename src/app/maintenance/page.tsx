@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '../lib/supabase'
 import VoiceInput from '../components/VoiceInput'
 import BottomNav from '../components/BottomNav'
+import PlanPreview from '../components/PlanPreview'
 import { ArrowLeft, Check, ChevronDown, ChevronUp, Download, Dumbbell, UtensilsCrossed, MessageCircle, Lock, Unlock, X, Plus, BookOpen, Pin } from 'lucide-react'
 import { AnimatePresence, motion } from 'framer-motion'
 
@@ -142,6 +143,13 @@ export default function Maintenance() {
   // Exercise tab
   const [fitnessLevel, setFitnessLevel] = useState('Intermediate')
   const [equipment, setEquipment] = useState('Dumbbells')
+  const [exercisePlanType, setExercisePlanType] = useState<'daily' | 'weekly'>('weekly')
+  const [daysPerWeek, setDaysPerWeek] = useState(4)
+
+  // Plan previews
+  const [mealPreview, setMealPreview] = useState<any>(null)
+  const [exercisePreview, setExercisePreview] = useState<any>(null)
+  const [savingPlan, setSavingPlan] = useState(false)
 
   // Override
   const [hasOverride, setHasOverride] = useState(false)
@@ -254,8 +262,8 @@ export default function Maintenance() {
   }, [phaseInfoOpen])
 
   // ── Coach API ─────────────────────────────────────────
-  async function sendToCoach(prompt: string, displayAsChat = true): Promise<string> {
-    if (!userId) return 'Not logged in. Please refresh and try again.'
+  async function sendToCoach(prompt: string, displayAsChat = true, previewMode = false): Promise<{ message: string; previews?: any[] }> {
+    if (!userId) return { message: 'Not logged in. Please refresh and try again.' }
 
     try {
       const res = await fetch('/api/transition-coach', {
@@ -264,21 +272,22 @@ export default function Maintenance() {
         body: JSON.stringify({
           message: prompt,
           conversationId: displayAsChat ? coachConversationId : undefined,
+          ...(previewMode && { previewMode: true }),
         }),
       })
       const data = await res.json()
       if (!res.ok) {
         console.error('Transition coach error:', res.status, data)
-        return data.message || 'Unable to generate plan. Try again.'
+        return { message: data.message || 'Unable to generate plan. Try again.' }
       }
       // Track conversation ID from response
       if (data.conversationId && !coachConversationId) {
         setCoachConversationId(data.conversationId)
       }
-      return data.message || 'Unable to generate plan. Try again.'
+      return { message: data.message || 'Unable to generate plan. Try again.', previews: data.previews }
     } catch (err) {
       console.error('Transition coach fetch error:', err)
-      return 'Network error. Check your connection and try again.'
+      return { message: 'Network error. Check your connection and try again.' }
     }
   }
 
@@ -303,8 +312,8 @@ export default function Maintenance() {
     setGenerating('taper')
     try {
       const durationLabel = TAPER_DURATIONS.find(d => d.id === taperDuration)?.label || '90 Days'
-      const result = await sendToCoach(`Generate my complete tapering plan based on all my data. The user wants a ${durationLabel} tapering timeline. Include specific phases with exact week ranges, dose changes at each step, protein/exercise targets, red flags to watch for, and what to do if things go wrong. Make it personal to my medication, dose, weight, and habits.`, false)
-      setTaperPlan(result)
+      const { message } = await sendToCoach(`Generate my complete tapering plan based on all my data. The user wants a ${durationLabel} tapering timeline. Include specific phases with exact week ranges, dose changes at each step, protein/exercise targets, red flags to watch for, and what to do if things go wrong. Make it personal to my medication, dose, weight, and habits.`, false)
+      setTaperPlan(message)
     } catch (err) {
       console.error('generateTaperPlan error:', err)
       setTaperPlan('Unable to generate plan. Please try again.')
@@ -315,17 +324,15 @@ export default function Maintenance() {
 
   async function generateMealPlan() {
     setGenerating('meal')
+    setMealPreview(null)
     try {
       const prompt = mealPlanType === 'weekly'
-        ? 'Create a complete weekly meal plan for me. 7 days. Hit my protein target each day. Use foods I actually eat based on my food logs. After generating it, save it to my account using the save_meal_plan tool.'
-        : 'Create a complete daily meal plan for me. Breakfast, lunch, snack, dinner. Hit my protein target. Use foods I actually eat. After generating it, save it to my account using the save_meal_plan tool.'
-      const result = await sendToCoach(prompt, false)
-      setMealPlan(result)
-      // Refresh saved plans from DB (Trish may have saved via tool)
-      if (userId) {
-        const { data } = await supabase.from('meal_plans').select('*').eq('user_id', userId).order('created_at', { ascending: false }).limit(10)
-        if (data) setSavedMealPlans(data)
-      }
+        ? 'Create a complete weekly meal plan for me. 7 days. Hit my protein target each day. Use foods I actually eat based on my food logs. After generating it, save it using the save_meal_plan tool.'
+        : 'Create a complete daily meal plan for me. Breakfast, lunch, snack, dinner. Hit my protein target. Use foods I actually eat. After generating it, save it using the save_meal_plan tool.'
+      const { message, previews } = await sendToCoach(prompt, false, true)
+      setMealPlan(message)
+      const mealPlanPreview = previews?.find(p => p.type === 'meal_plan')
+      if (mealPlanPreview) setMealPreview(mealPlanPreview.data)
     } catch (err) {
       console.error('generateMealPlan error:', err)
       setMealPlan('Unable to generate meal plan. Please try again.')
@@ -338,8 +345,8 @@ export default function Maintenance() {
     if (!recipeInput.trim()) return
     setGenerating('recipe')
     try {
-      const result = await sendToCoach(`Give me a recipe for ${recipeInput}. Include ingredients, steps, prep time, and macros per serving.`, false)
-      setMealPlan(result)
+      const { message } = await sendToCoach(`Give me a recipe for ${recipeInput}. Include ingredients, steps, prep time, and macros per serving.`, false)
+      setMealPlan(message)
       setRecipeInput('')
     } catch (err) {
       console.error('generateRecipe error:', err)
@@ -351,20 +358,45 @@ export default function Maintenance() {
 
   async function generateExercisePlan() {
     setGenerating('exercise')
+    setExercisePreview(null)
     try {
-      const result = await sendToCoach(`Create a complete weekly exercise plan for me. My fitness level is ${fitnessLevel}. Equipment available: ${equipment}. Include specific exercises, sets, and reps for each day. After generating it, save it to my account using the save_workout_plan tool.`, false)
-      setExercisePlan(result)
-      // Refresh saved plans from DB
-      if (userId) {
-        const { data } = await supabase.from('workout_plans').select('*').eq('user_id', userId).order('created_at', { ascending: false }).limit(10)
-        if (data) setSavedWorkoutPlans(data)
-      }
+      const prompt = exercisePlanType === 'daily'
+        ? `Create a single workout for today. My fitness level is ${fitnessLevel}. Equipment available: ${equipment}. Include warmup, 5-8 main exercises, and cooldown. Target 30-60 minutes. After generating it, save it using the save_workout_plan tool.`
+        : `Create a complete ${daysPerWeek}-day weekly exercise plan for me. My fitness level is ${fitnessLevel}. Equipment available: ${equipment}. Balance muscle groups across days. Include rest days. Include specific exercises, sets, and reps for each day. After generating it, save it using the save_workout_plan tool.`
+      const { message, previews } = await sendToCoach(prompt, false, true)
+      setExercisePlan(message)
+      const workoutPreview = previews?.find(p => p.type === 'workout_plan')
+      if (workoutPreview) setExercisePreview(workoutPreview.data)
     } catch (err) {
       console.error('generateExercisePlan error:', err)
       setExercisePlan('Unable to generate exercise plan. Please try again.')
     } finally {
       setGenerating(null)
     }
+  }
+
+  async function saveMealPreview(data: any) {
+    setSavingPlan(true)
+    try {
+      const res = await fetch('/api/meal-plans', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })
+      if (res.ok) {
+        setMealPreview(null)
+        const { data: plans } = await supabase.from('meal_plans').select('*').eq('user_id', userId!).order('created_at', { ascending: false }).limit(10)
+        if (plans) setSavedMealPlans(plans)
+      }
+    } finally { setSavingPlan(false) }
+  }
+
+  async function saveExercisePreview(data: any) {
+    setSavingPlan(true)
+    try {
+      const res = await fetch('/api/workout-plans', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })
+      if (res.ok) {
+        setExercisePreview(null)
+        const { data: plans } = await supabase.from('workout_plans').select('*').eq('user_id', userId!).order('created_at', { ascending: false }).limit(10)
+        if (plans) setSavedWorkoutPlans(plans)
+      }
+    } finally { setSavingPlan(false) }
   }
 
   // ── PDF Export ────────────────────────────────────────
@@ -425,7 +457,7 @@ export default function Maintenance() {
     setChatMessages(prev => [...prev, { role: 'user', content: text }])
     setChatInput('')
     setChatLoading(true)
-    const reply = await sendToCoach(text, true)
+    const { message: reply } = await sendToCoach(text, true)
     setChatMessages(prev => [...prev, { role: 'assistant', content: reply }])
     setChatLoading(false)
   }
@@ -775,8 +807,21 @@ export default function Maintenance() {
             </div>
           </div>
 
-          {/* Generated plan */}
-          {mealPlan && (
+          {/* Plan preview (editable, not yet saved) */}
+          {mealPreview && (
+            <PlanPreview
+              type="meal_plan"
+              data={mealPreview}
+              onSave={saveMealPreview}
+              onDiscard={() => setMealPreview(null)}
+              onRegenerate={generateMealPlan}
+              isRegenerating={generating === 'meal'}
+              isSaving={savingPlan}
+            />
+          )}
+
+          {/* Generated plan text (shown if no structured preview) */}
+          {mealPlan && !mealPreview && (
             <div className="bg-white border border-[#EAF2EB] rounded-3xl p-6 shadow-[0_4px_24px_-8px_rgba(31,75,50,0.08)]">
               <div className="flex justify-between items-center mb-3">
                 <h3 className="text-sm font-semibold text-[#0D1F16]">Your Plan</h3>
@@ -856,6 +901,19 @@ export default function Maintenance() {
             </div>
 
             <div>
+              <p className="text-[10px] font-semibold text-[#6B7A72] uppercase tracking-wider mb-2">Plan Type</p>
+              <div className="bg-[#F5F8F3] rounded-2xl p-1 flex gap-1">
+                {(['daily', 'weekly'] as const).map(t => (
+                  <button key={t} onClick={() => setExercisePlanType(t)}
+                    className={`flex-1 py-2 rounded-xl text-xs font-semibold capitalize cursor-pointer transition-all duration-300 ${exercisePlanType === t ? 'bg-white shadow-sm text-[#1F4B32]' : 'text-[#6B7A72]'}`}>{t}</button>
+                ))}
+              </div>
+              <p className="text-[10px] text-[#6B7A72] mt-1.5">
+                {exercisePlanType === 'daily' ? 'A single workout for today.' : 'A full week of workouts with rest days planned in.'}
+              </p>
+            </div>
+
+            <div>
               <p className="text-[10px] font-semibold text-[#6B7A72] uppercase tracking-wider mb-2">Fitness Level</p>
               <div className="bg-[#F5F8F3] rounded-2xl p-1 flex gap-1">
                 {['Beginner', 'Intermediate', 'Advanced'].map(l => (
@@ -875,13 +933,39 @@ export default function Maintenance() {
               </div>
             </div>
 
+            {exercisePlanType === 'weekly' && (
+              <div>
+                <p className="text-[10px] font-semibold text-[#6B7A72] uppercase tracking-wider mb-2">Days Per Week</p>
+                <div className="bg-[#F5F8F3] rounded-2xl p-1 flex gap-1">
+                  {[3, 4, 5, 6].map(d => (
+                    <button key={d} onClick={() => setDaysPerWeek(d)}
+                      className={`flex-1 py-2 rounded-xl text-xs font-semibold cursor-pointer transition-all duration-300 ${daysPerWeek === d ? 'bg-white shadow-sm text-[#1F4B32]' : 'text-[#6B7A72]'}`}>{d} days</button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <button onClick={generateExercisePlan} disabled={generating === 'exercise'}
               className="w-full bg-gradient-to-r from-[#1F4B32] to-[#2D6B45] text-white py-3 rounded-2xl text-sm font-semibold cursor-pointer hover:shadow-[0_4px_16px_-4px_rgba(31,75,50,0.4)] transition-all duration-300 disabled:opacity-30">
-              {generating === 'exercise' ? 'Generating...' : 'Generate Exercise Plan'}
+              {generating === 'exercise' ? 'Generating...' : `Generate ${exercisePlanType === 'daily' ? "Today's Workout" : 'Weekly Plan'}`}
             </button>
           </div>
 
-          {exercisePlan && (
+          {/* Exercise preview (editable, not yet saved) */}
+          {exercisePreview && (
+            <PlanPreview
+              type="workout_plan"
+              data={exercisePreview}
+              onSave={saveExercisePreview}
+              onDiscard={() => setExercisePreview(null)}
+              onRegenerate={generateExercisePlan}
+              isRegenerating={generating === 'exercise'}
+              isSaving={savingPlan}
+            />
+          )}
+
+          {/* Generated plan text (shown if no structured preview) */}
+          {exercisePlan && !exercisePreview && (
             <div className="bg-white border border-[#EAF2EB] rounded-3xl p-6 shadow-[0_4px_24px_-8px_rgba(31,75,50,0.08)]">
               <div className="flex justify-between items-center mb-3">
                 <h3 className="text-sm font-semibold text-[#0D1F16]">Your Exercise Plan</h3>

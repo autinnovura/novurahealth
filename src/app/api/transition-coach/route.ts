@@ -142,13 +142,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Rate limit exceeded', message: 'Too many requests. Please slow down and try again.' }, { status: 429 })
   }
 
-  let body: { message?: string; conversationId?: string; messages?: { role: string; content: string }[]; action?: string }
+  let body: { message?: string; conversationId?: string; messages?: { role: string; content: string }[]; action?: string; previewMode?: boolean }
   try {
     body = await req.json()
   } catch (err: unknown) {
     console.error('Transition coach body parse error:', err)
     return NextResponse.json({ error: 'Invalid request body', message: 'Unable to process request. Try again.' }, { status: 400 })
   }
+  const previewMode = body.previewMode === true
 
   // Support both new { message, conversationId } and legacy { messages } format
   const newUserMessage = body.message || body.messages?.[body.messages.length - 1]?.content
@@ -520,6 +521,7 @@ ${REMEMBER_FACT_PROMPT}`
     }))
     conversationMessages.push({ role: 'user', content: newUserMessage })
     let finalResponseText = ''
+    const previews: { type: string; data: any }[] = []
 
     for (let i = 0; i < MAX_ITERATIONS; i++) {
       const res = await fetch('https://api.anthropic.com/v1/messages', {
@@ -563,12 +565,15 @@ ${REMEMBER_FACT_PROMPT}`
       const toolResults: any[] = []
 
       for (const toolCall of toolUseBlocks) {
-        const toolResult = await executeToolCall(toolCall.name, toolCall.input, user.id)
+        const toolResult = await executeToolCall(toolCall.name, toolCall.input, user.id, previewMode)
+        if (toolResult.preview && toolResult.previewData) {
+          previews.push(toolResult.previewData)
+        }
         toolResults.push({
           type: 'tool_result',
           tool_use_id: toolCall.id,
           content: toolResult.success
-            ? JSON.stringify({ status: 'saved', ...toolResult })
+            ? JSON.stringify({ status: toolResult.preview ? 'preview_ready' : 'saved', ...toolResult })
             : JSON.stringify({ status: 'error', error: toolResult.error }),
         })
       }
@@ -587,6 +592,7 @@ ${REMEMBER_FACT_PROMPT}`
     return NextResponse.json({
       message: finalResponseText,
       conversationId: conversation.id,
+      ...(previews.length > 0 && { previews }),
     })
   } catch (err: unknown) {
     console.error('Tapering plan error:', err)
@@ -620,13 +626,17 @@ async function checkRecentDuplicate(
 async function executeToolCall(
   toolName: string,
   input: any,
-  userId: string
-): Promise<{ success: boolean; error?: string; skipped?: boolean; [key: string]: any }> {
+  userId: string,
+  previewMode = false
+): Promise<{ success: boolean; error?: string; skipped?: boolean; preview?: boolean; previewData?: any; [key: string]: any }> {
   const now = new Date().toISOString()
 
   try {
     switch (toolName) {
       case 'save_meal_plan': {
+        if (previewMode) {
+          return { success: true, preview: true, previewData: { type: 'meal_plan', data: { title: input.title, description: input.description || null, meals: input.meals || [], grocery_list: input.grocery_list || [] } } }
+        }
         const { error } = await supabaseAdmin.from('meal_plans').insert({
           user_id: userId,
           title: input.title,
@@ -641,6 +651,9 @@ async function executeToolCall(
       }
 
       case 'save_workout_plan': {
+        if (previewMode) {
+          return { success: true, preview: true, previewData: { type: 'workout_plan', data: { title: input.title, description: input.description || null, days_per_week: input.days_per_week || null, workouts: input.workouts || [] } } }
+        }
         const { error } = await supabaseAdmin.from('workout_plans').insert({
           user_id: userId,
           title: input.title,
