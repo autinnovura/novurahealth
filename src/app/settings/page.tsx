@@ -7,6 +7,7 @@ import { toast } from 'sonner'
 import DataImport from '../components/DataImport'
 import StreakCalendar from '../components/StreakCalendar'
 import BottomNav from '../components/BottomNav'
+import InstallAppCard from '../components/InstallAppCard'
 import { ArrowLeft, ChevronRight, Download, Shield, AlertTriangle, User, Lock, Database, Syringe, Pill, Brain, Pin, PinOff, Pencil, Trash2, Plus, MessageCircle, X, Flame, DollarSign } from 'lucide-react'
 import { getMedicationChoices, findMedicationByLabel } from '../lib/medications'
 
@@ -445,6 +446,9 @@ export default function Settings() {
 
         {/* ══════════ ACCOUNT ══════════ */}
         {activeSection === 'account' && (<>
+          {/* Install app */}
+          <InstallAppCard />
+
           {/* Password */}
           <div className="bg-white border border-[#EAF2EB] rounded-3xl shadow-[0_4px_24px_-8px_rgba(31,75,50,0.08)] p-6 space-y-4">
             <div className="flex justify-between items-center">

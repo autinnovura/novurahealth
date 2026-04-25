@@ -3,6 +3,8 @@ import { Geist, Geist_Mono, Inter, Fraunces } from "next/font/google";
 import "./globals.css";
 import StructuredData from "./components/StructuredData";
 import PWARegister from "./components/PWARegister";
+import IOSInstallPrompt from "./components/IOSInstallPrompt";
+import AndroidInstallPrompt from "./components/AndroidInstallPrompt";
 import { Toaster } from "sonner";
 
 const geistSans = Geist({
@@ -80,7 +82,7 @@ export const metadata: Metadata = {
   other: {
     "apple-mobile-web-app-capable": "yes",
     "apple-mobile-web-app-status-bar-style": "black-translucent",
-    "theme-color": "#2D5A3D",
+    "apple-mobile-web-app-title": "Novura",
   },
 };
 
@@ -97,6 +99,8 @@ export default function RootLayout({
       <body className="min-h-full flex flex-col">
         <StructuredData />
         <PWARegister />
+        <IOSInstallPrompt />
+        <AndroidInstallPrompt />
         <Toaster position="top-center" richColors />
         {children}
       </body>
