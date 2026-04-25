@@ -162,6 +162,23 @@ export const MEDICATIONS: Medication[] = [
     notes: 'No longer legally permitted since February 2025 when FDA declared the shortage resolved. Users currently on compounded versions should consult their provider about transitioning to approved formulations.',
     status: 'restricted',
   },
+  {
+    id: 'compounded_tirzepatide',
+    brand_names: ['Compounded Tirzepatide'],
+    generic_name: 'Tirzepatide (compounded)',
+    manufacturer: 'Various compounding pharmacies',
+    route: 'injection',
+    frequency: 'weekly',
+    available_doses: ['varies'],
+    half_life_hours: 120,
+    absorption_tmax_hours: 48,
+    fda_approved: false,
+    typical_weight_loss_pct: 20.9,
+    mechanism: 'GLP-1/GIP',
+    cost_monthly_range: '$200–500',
+    notes: 'Compounded tirzepatide is currently available under FDA shortage provisions. Availability may change when the shortage is resolved. Quality and consistency vary by compounding pharmacy — discuss with your provider.',
+    status: 'restricted',
+  },
 ]
 
 /** Find a medication by its ID */

@@ -18,7 +18,7 @@ import {
   Flame, Sparkles, TrendingUp
 } from 'lucide-react'
 import BottomNav from '../components/BottomNav'
-import { getDosesForBrand } from '../lib/medications'
+import { getDosesForBrand, findMedicationByLabel } from '../lib/medications'
 import { localDateKey } from '../lib/dates'
 
 // ── Types ──────────────────────────────────────────────
@@ -750,40 +750,54 @@ export default function Dashboard() {
           {/* ── TIER 2: Below the fold ──────────────────── */}
 
           {/* Medication level chart — collapsible */}
-          {profile?.medication && (
-            <motion.div variants={fadeUp}>
-              {medChartCollapsed ? (
-                <button onClick={() => { setMedChartCollapsed(false); localStorage.setItem('novura_medchart_collapsed', 'false') }}
-                  className="w-full bg-white rounded-3xl p-4 shadow-[0_4px_24px_-8px_rgba(31,75,50,0.08)] border border-[#EAF2EB] flex items-center justify-between cursor-pointer hover:-translate-y-0.5 hover:shadow-[0_8px_32px_-8px_rgba(31,75,50,0.15)] transition-all duration-300">
-                  <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-xl bg-[#EAF2EB] flex items-center justify-center">
-                      <Syringe className="w-4 h-4 text-[#1F4B32]" strokeWidth={1.5} />
-                    </div>
-                    <div>
-                      <p className="text-sm font-semibold text-[#0D1F16]">Medication Level</p>
-                      <p className="text-[11px] text-[#6B7A72]">{profile.medication} · {profile.dose}</p>
-                    </div>
+          {profile?.medication && (() => {
+            const hasPKData = !profile.medication.startsWith('custom:') && !!findMedicationByLabel(profile.medication) && findMedicationByLabel(profile.medication)!.status === 'available'
+            if (!hasPKData) return (
+              <motion.div variants={fadeUp} className="bg-white rounded-3xl p-5 shadow-[0_4px_24px_-8px_rgba(31,75,50,0.08)] border border-[#EAF2EB]">
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="w-9 h-9 rounded-xl bg-[#EAF2EB] flex items-center justify-center">
+                    <Syringe className="w-4 h-4 text-[#1F4B32]" strokeWidth={1.5} />
                   </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-[#1F4B32] font-semibold bg-[#EAF2EB] px-2.5 py-1 rounded-full">Show chart</span>
-                    <ChevronDown className="w-4 h-4 text-[#6B7A72]" />
-                  </div>
-                </button>
-              ) : (
-                <div className="relative">
-                  <MedicationLevelChart
-                    medication={profile.medication}
-                    dose={profile.dose}
-                    injectionLogs={medChartLogs || []}
-                  />
-                  <button onClick={() => { setMedChartCollapsed(true); localStorage.setItem('novura_medchart_collapsed', 'true') }}
-                    className="absolute top-4 right-4 p-1.5 rounded-lg bg-white/80 backdrop-blur-sm text-[#6B7A72] hover:text-[#0D1F16] cursor-pointer transition-all duration-300 z-10">
-                    <ChevronUp className="w-4 h-4" />
-                  </button>
+                  <p className="text-sm font-semibold text-[#0D1F16]">Medication Level</p>
                 </div>
-              )}
-            </motion.div>
-          )}
+                <p className="text-xs text-[#6B7A72] leading-relaxed">Pharmacokinetic data is not available for this medication. Continue tracking your injections and doses manually.</p>
+              </motion.div>
+            )
+            return (
+              <motion.div variants={fadeUp}>
+                {medChartCollapsed ? (
+                  <button onClick={() => { setMedChartCollapsed(false); localStorage.setItem('novura_medchart_collapsed', 'false') }}
+                    className="w-full bg-white rounded-3xl p-4 shadow-[0_4px_24px_-8px_rgba(31,75,50,0.08)] border border-[#EAF2EB] flex items-center justify-between cursor-pointer hover:-translate-y-0.5 hover:shadow-[0_8px_32px_-8px_rgba(31,75,50,0.15)] transition-all duration-300">
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-xl bg-[#EAF2EB] flex items-center justify-center">
+                        <Syringe className="w-4 h-4 text-[#1F4B32]" strokeWidth={1.5} />
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-[#0D1F16]">Medication Level</p>
+                        <p className="text-[11px] text-[#6B7A72]">{profile.medication} · {profile.dose}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-[#1F4B32] font-semibold bg-[#EAF2EB] px-2.5 py-1 rounded-full">Show chart</span>
+                      <ChevronDown className="w-4 h-4 text-[#6B7A72]" />
+                    </div>
+                  </button>
+                ) : (
+                  <div className="relative">
+                    <MedicationLevelChart
+                      medication={profile.medication}
+                      dose={profile.dose}
+                      injectionLogs={medChartLogs || []}
+                    />
+                    <button onClick={() => { setMedChartCollapsed(true); localStorage.setItem('novura_medchart_collapsed', 'true') }}
+                      className="absolute top-4 right-4 p-1.5 rounded-lg bg-white/80 backdrop-blur-sm text-[#6B7A72] hover:text-[#0D1F16] cursor-pointer transition-all duration-300 z-10">
+                      <ChevronUp className="w-4 h-4" />
+                    </button>
+                  </div>
+                )}
+              </motion.div>
+            )
+          })()}
 
           {/* Today's macros — compact card */}
           <motion.div variants={fadeUp} className="bg-white rounded-3xl p-5 shadow-[0_4px_24px_-8px_rgba(31,75,50,0.08)] border border-[#EAF2EB]">

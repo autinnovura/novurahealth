@@ -5,11 +5,10 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '../lib/supabase'
 import { toast } from 'sonner'
 import DataImport from '../components/DataImport'
-import StreakCalendar from '../components/StreakCalendar'
 import BottomNav from '../components/BottomNav'
 import InstallAppCard from '../components/InstallAppCard'
-import { ArrowLeft, ChevronRight, Download, Shield, AlertTriangle, User, Lock, Database, Syringe, Pill, Brain, Pin, PinOff, Pencil, Trash2, Plus, MessageCircle, X, Flame, DollarSign } from 'lucide-react'
-import { getMedicationChoices, findMedicationByLabel } from '../lib/medications'
+import MedicationPicker from '../components/MedicationPicker'
+import { ArrowLeft, ChevronRight, Download, AlertTriangle, User, Lock, Database, Brain, Pin, PinOff, Pencil, Trash2, Plus, MessageCircle, X, DollarSign } from 'lucide-react'
 
 interface Profile {
   name: string; medication: string; dose: string; start_date: string
@@ -19,8 +18,6 @@ interface Profile {
   injection_day?: string | null; injection_time?: string | null
 }
 
-const { available: MED_CHOICES } = getMedicationChoices()
-const MEDICATIONS = [...MED_CHOICES.map(m => m.label), 'Other']
 const GOALS = ['Lose weight', 'Manage blood sugar', 'Reduce appetite', 'Improve health markers', 'Other']
 const EXERCISE_LEVELS = ['Sedentary', 'Light (1-2x/week)', 'Moderate (3-4x/week)', 'Active (5+/week)']
 const DAYS_OF_WEEK = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
@@ -329,26 +326,8 @@ export default function Settings() {
           {/* Medication */}
           <div className="bg-white border border-[#EAF2EB] rounded-3xl shadow-[0_4px_24px_-8px_rgba(31,75,50,0.08)] p-6 space-y-4">
             <h2 className="text-sm font-semibold text-[#0D1F16]" style={{ fontFamily: 'var(--font-fraunces)' }}>Medication</h2>
-            <div>
-              <label className="text-[10px] font-semibold text-[#6B7A72] uppercase tracking-wider">Current Medication</label>
-              <div className="flex flex-wrap gap-1.5 mt-2">
-                {MEDICATIONS.map(m => {
-                  const medInfo = MED_CHOICES.find(c => c.label === m)
-                  const RouteIcon = medInfo?.route === 'oral' ? Pill : Syringe
-                  return (
-                    <button key={m} onClick={() => setMedication(m)}
-                      className={`text-xs px-3 py-1.5 rounded-full border cursor-pointer transition-all duration-300 flex items-center gap-1.5 ${medication === m ? 'border-[#1F4B32] bg-[#EAF2EB] text-[#1F4B32] font-semibold' : 'border-[#EAF2EB] text-[#6B7A72]'}`}>
-                      {medInfo && <RouteIcon className="w-3 h-3" />}
-                      {m}
-                      {medInfo?.isNew && <span className="text-[8px] font-bold px-1 py-0.5 rounded bg-[#7FFFA4]/20 text-[#1F4B32]">New</span>}
-                    </button>
-                  )
-                })}
-              </div>
-              {findMedicationByLabel(medication)?.notes && (
-                <p className="text-[10px] text-[#6B7A72] mt-2 leading-relaxed">{findMedicationByLabel(medication)!.notes}</p>
-              )}
-            </div>
+            <label className="text-[10px] font-semibold text-[#6B7A72] uppercase tracking-wider">Current Medication</label>
+            <MedicationPicker value={medication} onChange={setMedication} onDoseChange={setDose} />
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="text-[10px] font-semibold text-[#6B7A72] uppercase tracking-wider">Dose</label>
@@ -685,17 +664,6 @@ export default function Settings() {
 
         {/* ══════════ DATA ══════════ */}
         {activeSection === 'preferences' && (<>
-          {/* Logging Streak */}
-          {userId && (
-            <div className="bg-white border border-[#EAF2EB] rounded-3xl shadow-[0_4px_24px_-8px_rgba(31,75,50,0.08)] p-6 space-y-4">
-              <div className="flex items-center gap-2">
-                <Flame className="w-4 h-4 text-[#7FFFA4]" />
-                <h2 className="text-sm font-semibold text-[#0D1F16]" style={{ fontFamily: 'var(--font-fraunces)' }}>Your Journey</h2>
-              </div>
-              <StreakCalendar userId={userId} refreshKey={0} />
-            </div>
-          )}
-
           {/* Import */}
           {userId && <DataImport />}
 

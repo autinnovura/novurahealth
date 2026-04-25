@@ -329,7 +329,7 @@ export default function StatsPage() {
         {/* ── STREAK CALENDAR ── */}
         <motion.div variants={fadeUp} className="bg-white rounded-3xl p-5 shadow-[0_4px_24px_-8px_rgba(31,75,50,0.08)] border border-[#EAF2EB]">
           <p className="text-[10px] font-semibold text-[#6B7A72] uppercase tracking-wider mb-3">Activity Calendar</p>
-          {userId && <StreakCalendar userId={userId} refreshKey={0} />}
+          {userId && <StreakCalendar userId={userId} refreshKey={0} showSummaries />}
         </motion.div>
 
         {/* ── WEIGHT TREND ── */}
