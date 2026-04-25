@@ -35,13 +35,19 @@ interface MedicationLog {
   medication?: string
 }
 
+interface CustomPK {
+  custom_half_life_hours?: number | null
+  custom_tmax_hours?: number | null
+}
+
 interface Props {
   medication: string
   dose?: string
   injectionLogs?: MedicationLog[]
+  customPK?: CustomPK | null
 }
 
-export default function MedicationLevelChart({ medication, dose, injectionLogs }: Props) {
+export default function MedicationLevelChart({ medication, dose, injectionLogs, customPK }: Props) {
   const [timeRange, setTimeRange] = useState<'week' | 'month' | '90days'>('week')
   const [showInfoSheet, setShowInfoSheet] = useState(false)
   const [now, setNow] = useState(() => Date.now())
@@ -52,16 +58,22 @@ export default function MedicationLevelChart({ medication, dose, injectionLogs }
 
   const med = findMedicationByLabel(medication)
 
-  const halfLifeHours = med?.half_life_hours ?? 165
-  const tmaxHours = med?.absorption_tmax_hours ?? 72
+  // PK resolution: static library → custom metadata → null (dose-only mode)
+  const resolvedHalfLife = med?.half_life_hours ?? customPK?.custom_half_life_hours ?? null
+  const resolvedTmax = med?.absorption_tmax_hours ?? customPK?.custom_tmax_hours ?? null
+  const hasPKData = resolvedHalfLife !== null && resolvedTmax !== null
+
+  const halfLifeHours = resolvedHalfLife ?? 165
+  const tmaxHours = resolvedTmax ?? 72
   const dosingIntervalHours = med?.frequency === 'daily' ? 24 : 168
   const displayName = med
     ? `${med.generic_name} (${med.brand_names[0]})`
-    : medication
+    : medication.startsWith('custom:') ? (() => { try { return JSON.parse(medication.slice(7)).name } catch { return medication } })() : medication
   const source = med?.fda_approved
     ? `FDA ${med.brand_names[0]} label`
-    : med?.notes ?? 'Estimated'
+    : med?.notes ?? (hasPKData ? 'User-provided PK data' : 'Dose timing only')
   const mechanism = med?.mechanism ?? 'GLP-1'
+  const isFdaApproved = med?.fda_approved ?? false
 
   const ke = Math.LN2 / halfLifeHours
   const ka = Math.LN2 / (tmaxHours / 3)
@@ -486,6 +498,15 @@ export default function MedicationLevelChart({ medication, dose, injectionLogs }
               </span>
             )}
           </div>
+        </div>
+      )}
+
+      {/* Non-FDA disclaimer */}
+      {!isFdaApproved && (
+        <div className="px-5 py-2 bg-amber-50/60 border-t border-amber-100">
+          <p className="text-[9px] text-amber-700/80 leading-relaxed">
+            Tracking only — this chart estimates levels based on published pharmacokinetic data for {med?.generic_name || 'the equivalent compound'}. NovuraHealth does not prescribe. Consult your provider.
+          </p>
         </div>
       )}
 

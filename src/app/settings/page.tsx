@@ -16,6 +16,7 @@ interface Profile {
   biggest_challenge: string; exercise_level: string
   protein_target_g?: number | null; water_target_oz?: number | null
   injection_day?: string | null; injection_time?: string | null
+  medication_metadata?: any
 }
 
 const GOALS = ['Lose weight', 'Manage blood sugar', 'Reduce appetite', 'Improve health markers', 'Other']
@@ -45,6 +46,7 @@ export default function Settings() {
   const [waterTargetOz, setWaterTargetOz] = useState('')
   const [injectionDay, setInjectionDay] = useState('')
   const [injectionTime, setInjectionTime] = useState('')
+  const [medicationMetadata, setMedicationMetadata] = useState<any>(null)
 
   // Password change
   const [showPasswordChange, setShowPasswordChange] = useState(false)
@@ -95,6 +97,7 @@ export default function Settings() {
         setWaterTargetOz(p.water_target_oz ? String(p.water_target_oz) : '')
         setInjectionDay(p.injection_day || '')
         setInjectionTime(p.injection_time || '')
+        setMedicationMetadata(p.medication_metadata || null)
       }
       setLoading(false)
     }
@@ -112,6 +115,7 @@ export default function Settings() {
       water_target_oz: waterTargetOz ? parseInt(waterTargetOz) : null,
       injection_day: injectionDay || null,
       injection_time: injectionTime || null,
+      medication_metadata: medicationMetadata,
     }).eq('id', userId)
     if (error) {
       toast.error('Failed to save: ' + error.message)
@@ -327,7 +331,7 @@ export default function Settings() {
           <div className="bg-white border border-[#EAF2EB] rounded-3xl shadow-[0_4px_24px_-8px_rgba(31,75,50,0.08)] p-6 space-y-4">
             <h2 className="text-sm font-semibold text-[#0D1F16]" style={{ fontFamily: 'var(--font-fraunces)' }}>Medication</h2>
             <label className="text-[10px] font-semibold text-[#6B7A72] uppercase tracking-wider">Current Medication</label>
-            <MedicationPicker value={medication} onChange={setMedication} onDoseChange={setDose} />
+            <MedicationPicker value={medication} onChange={setMedication} onDoseChange={setDose} medicationMetadata={medicationMetadata} onMetadataChange={setMedicationMetadata} />
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="text-[10px] font-semibold text-[#6B7A72] uppercase tracking-wider">Dose</label>
