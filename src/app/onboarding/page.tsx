@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '../lib/supabase'
-import { getMedicationChoices, findMedicationByLabel } from '../lib/medications'
+import { getMedicationChoices, findMedicationByLabel, getMedication } from '../lib/medications'
 import { Syringe, Pill, ChevronDown, ChevronUp, AlertTriangle } from 'lucide-react'
 
 const { available: MEDICATIONS, comingSoon: COMING_SOON, restricted: RESTRICTED } = getMedicationChoices()
@@ -32,6 +32,8 @@ export default function Onboarding() {
   const [dose, setDose] = useState('')
   const [customDose, setCustomDose] = useState('')
   const [frequency, setFrequency] = useState('')
+  const [heightFeet, setHeightFeet] = useState('')
+  const [heightInches, setHeightInches] = useState('')
   const [currentWeight, setCurrentWeight] = useState('')
   const [goalWeight, setGoalWeight] = useState('')
   const [startDate, setStartDate] = useState('')
@@ -64,7 +66,7 @@ export default function Onboarding() {
       case 2: return medication.length > 0
       case 3: return dose.length > 0 || customDose.length > 0
       case 4: return frequency.length > 0
-      case 5: return currentWeight.length > 0 && goalWeight.length > 0
+      case 5: return heightFeet.length > 0 && currentWeight.length > 0 && goalWeight.length > 0
       case 6: return justStarting || startDate.length > 0
       case 7: return avgCalories.length > 0 && avgProtein.length > 0
       case 8: return avgWater.length > 0
@@ -77,12 +79,14 @@ export default function Onboarding() {
     if (!userId) return
     setSaving(true)
     const finalDose = dose === 'custom' ? `${customDose}mg` : `${dose}mg`
+    const totalInches = (parseInt(heightFeet) || 0) * 12 + (parseInt(heightInches) || 0)
     await supabase.from('profiles').upsert({
       id: userId,
       name,
       medication,
       dose: finalDose,
       injection_frequency: frequency,
+      height_inches: totalInches || null,
       current_weight: currentWeight,
       goal_weight: goalWeight,
       start_date: justStarting ? new Date().toISOString().split('T')[0] : startDate,
@@ -121,7 +125,7 @@ export default function Onboarding() {
     2: "Which GLP-1 are you on?",
     3: "What's your dosage?",
     4: "How often do you inject?",
-    5: "Weight",
+    5: "Height & Weight",
     6: "When did you start?",
     7: "Typical daily nutrition",
     8: "Water intake",
@@ -272,42 +276,87 @@ export default function Onboarding() {
             </div>
           )}
 
-          {/* STEP 5: Weight */}
-          {step === 5 && (
-            <div className="space-y-5">
-              <div>
-                <label className="text-xs text-[#6B7A72] font-medium mb-2 block">Current weight</label>
-                <div className="flex items-center gap-3">
-                  <button onClick={() => setCurrentWeight(String(Math.max(80, (parseInt(currentWeight) || 200) - 1)))}
-                    className="w-12 h-12 rounded-2xl bg-[#F5F8F3] text-[#0D1F16] flex items-center justify-center text-xl font-bold cursor-pointer hover:bg-[#EAF2EB] active:scale-95 transition-all">−</button>
-                  <input ref={weightRef} type="number" autoComplete="off" value={currentWeight} onChange={e => setCurrentWeight(e.target.value)}
-                    placeholder="175"
-                    className="flex-1 text-center px-4 py-3.5 rounded-2xl border-2 border-[#EAF2EB] text-2xl font-bold text-[#0D1F16] outline-none focus:border-[#1F4B32] placeholder:text-[#6B7A72]/40 placeholder:font-normal placeholder:text-base" />
-                  <button onClick={() => setCurrentWeight(String((parseInt(currentWeight) || 200) + 1))}
-                    className="w-12 h-12 rounded-2xl bg-[#F5F8F3] text-[#0D1F16] flex items-center justify-center text-xl font-bold cursor-pointer hover:bg-[#EAF2EB] active:scale-95 transition-all">+</button>
-                  <span className="text-sm text-[#6B7A72] font-medium">lbs</span>
+          {/* STEP 5: Height + Weight */}
+          {step === 5 && (() => {
+            const totalInches = (parseInt(heightFeet) || 0) * 12 + (parseInt(heightInches) || 0)
+            const weightNum = parseInt(currentWeight) || 0
+            const bmi = totalInches > 0 && weightNum > 0 ? Math.round((weightNum / (totalInches * totalInches)) * 703 * 10) / 10 : null
+            const med = findMedicationByLabel(medication)
+            const medRecord = med ? getMedication(med.id) : null
+            const eligibility = medRecord?.bmi_eligibility
+            let bmiTier = ''
+            let bmiMessage = ''
+            if (bmi && eligibility) {
+              if (bmi >= eligibility.new_patient) {
+                bmiTier = 'standard'
+                bmiMessage = `Your BMI is ${bmi} — you qualify for standard weight-loss dosing.`
+              } else if (bmi >= eligibility.transfer_patient) {
+                bmiTier = 'transfer'
+                bmiMessage = `Your BMI is ${bmi} — you qualify as a transfer patient (already on medication).`
+              } else if (bmi >= eligibility.microdose) {
+                bmiTier = 'microdose'
+                bmiMessage = `Your BMI is ${bmi} — you qualify for microdose protocol.`
+              } else {
+                bmiTier = 'below'
+                bmiMessage = `Your BMI is ${bmi}. Discuss dosing with your provider.`
+              }
+            }
+            return (
+              <div className="space-y-5">
+                <div>
+                  <label className="text-xs text-[#6B7A72] font-medium mb-2 block">Height</label>
+                  <div className="flex items-center gap-2">
+                    <input type="number" autoComplete="off" value={heightFeet} onChange={e => setHeightFeet(e.target.value)}
+                      placeholder="5" min="3" max="8"
+                      className="w-20 text-center px-3 py-3.5 rounded-2xl border-2 border-[#EAF2EB] text-xl font-bold text-[#0D1F16] outline-none focus:border-[#1F4B32] placeholder:text-[#6B7A72]/40 placeholder:font-normal placeholder:text-base" />
+                    <span className="text-sm text-[#6B7A72] font-medium">ft</span>
+                    <input type="number" autoComplete="off" value={heightInches} onChange={e => setHeightInches(e.target.value)}
+                      placeholder="8" min="0" max="11"
+                      className="w-20 text-center px-3 py-3.5 rounded-2xl border-2 border-[#EAF2EB] text-xl font-bold text-[#0D1F16] outline-none focus:border-[#1F4B32] placeholder:text-[#6B7A72]/40 placeholder:font-normal placeholder:text-base" />
+                    <span className="text-sm text-[#6B7A72] font-medium">in</span>
+                  </div>
                 </div>
+                <div>
+                  <label className="text-xs text-[#6B7A72] font-medium mb-2 block">Current weight</label>
+                  <div className="flex items-center gap-3">
+                    <button onClick={() => setCurrentWeight(String(Math.max(80, (parseInt(currentWeight) || 200) - 1)))}
+                      className="w-12 h-12 rounded-2xl bg-[#F5F8F3] text-[#0D1F16] flex items-center justify-center text-xl font-bold cursor-pointer hover:bg-[#EAF2EB] active:scale-95 transition-all">−</button>
+                    <input ref={weightRef} type="number" autoComplete="off" value={currentWeight} onChange={e => setCurrentWeight(e.target.value)}
+                      placeholder="175"
+                      className="flex-1 text-center px-4 py-3.5 rounded-2xl border-2 border-[#EAF2EB] text-2xl font-bold text-[#0D1F16] outline-none focus:border-[#1F4B32] placeholder:text-[#6B7A72]/40 placeholder:font-normal placeholder:text-base" />
+                    <button onClick={() => setCurrentWeight(String((parseInt(currentWeight) || 200) + 1))}
+                      className="w-12 h-12 rounded-2xl bg-[#F5F8F3] text-[#0D1F16] flex items-center justify-center text-xl font-bold cursor-pointer hover:bg-[#EAF2EB] active:scale-95 transition-all">+</button>
+                    <span className="text-sm text-[#6B7A72] font-medium">lbs</span>
+                  </div>
+                </div>
+                <div>
+                  <label className="text-xs text-[#6B7A72] font-medium mb-2 block">Goal weight</label>
+                  <div className="flex items-center gap-3">
+                    <button onClick={() => setGoalWeight(String(Math.max(80, (parseInt(goalWeight) || 160) - 1)))}
+                      className="w-12 h-12 rounded-2xl bg-[#F5F8F3] text-[#0D1F16] flex items-center justify-center text-xl font-bold cursor-pointer hover:bg-[#EAF2EB] active:scale-95 transition-all">−</button>
+                    <input ref={goalRef} type="number" autoComplete="off" value={goalWeight} onChange={e => setGoalWeight(e.target.value)}
+                      placeholder="155"
+                      className="flex-1 text-center px-4 py-3.5 rounded-2xl border-2 border-[#EAF2EB] text-2xl font-bold text-[#0D1F16] outline-none focus:border-[#1F4B32] placeholder:text-[#6B7A72]/40 placeholder:font-normal placeholder:text-base" />
+                    <button onClick={() => setGoalWeight(String((parseInt(goalWeight) || 160) + 1))}
+                      className="w-12 h-12 rounded-2xl bg-[#F5F8F3] text-[#0D1F16] flex items-center justify-center text-xl font-bold cursor-pointer hover:bg-[#EAF2EB] active:scale-95 transition-all">+</button>
+                    <span className="text-sm text-[#6B7A72] font-medium">lbs</span>
+                  </div>
+                </div>
+                {currentWeight && goalWeight && parseInt(currentWeight) > parseInt(goalWeight) && (
+                  <div className="bg-[#EAF2EB] rounded-3xl px-4 py-3 text-center">
+                    <span className="text-sm text-[#1F4B32] font-medium">{parseInt(currentWeight) - parseInt(goalWeight)} lbs to go</span>
+                  </div>
+                )}
+                {bmi && bmiMessage && (
+                  <div className={`rounded-3xl px-4 py-3 ${bmiTier === 'standard' ? 'bg-[#EAF2EB]' : bmiTier === 'microdose' ? 'bg-[#FFF4E8]' : 'bg-[#F5F8F3]'}`}>
+                    <p className={`text-sm font-medium ${bmiTier === 'standard' ? 'text-[#1F4B32]' : bmiTier === 'microdose' ? 'text-[#C4742B]' : 'text-[#0D1F16]'}`}>
+                      {bmiMessage}
+                    </p>
+                  </div>
+                )}
               </div>
-              <div>
-                <label className="text-xs text-[#6B7A72] font-medium mb-2 block">Goal weight</label>
-                <div className="flex items-center gap-3">
-                  <button onClick={() => setGoalWeight(String(Math.max(80, (parseInt(goalWeight) || 160) - 1)))}
-                    className="w-12 h-12 rounded-2xl bg-[#F5F8F3] text-[#0D1F16] flex items-center justify-center text-xl font-bold cursor-pointer hover:bg-[#EAF2EB] active:scale-95 transition-all">−</button>
-                  <input ref={goalRef} type="number" autoComplete="off" value={goalWeight} onChange={e => setGoalWeight(e.target.value)}
-                    placeholder="155"
-                    className="flex-1 text-center px-4 py-3.5 rounded-2xl border-2 border-[#EAF2EB] text-2xl font-bold text-[#0D1F16] outline-none focus:border-[#1F4B32] placeholder:text-[#6B7A72]/40 placeholder:font-normal placeholder:text-base" />
-                  <button onClick={() => setGoalWeight(String((parseInt(goalWeight) || 160) + 1))}
-                    className="w-12 h-12 rounded-2xl bg-[#F5F8F3] text-[#0D1F16] flex items-center justify-center text-xl font-bold cursor-pointer hover:bg-[#EAF2EB] active:scale-95 transition-all">+</button>
-                  <span className="text-sm text-[#6B7A72] font-medium">lbs</span>
-                </div>
-              </div>
-              {currentWeight && goalWeight && parseInt(currentWeight) > parseInt(goalWeight) && (
-                <div className="bg-[#EAF2EB] rounded-3xl px-4 py-3 text-center">
-                  <span className="text-sm text-[#1F4B32] font-medium">{parseInt(currentWeight) - parseInt(goalWeight)} lbs to go</span>
-                </div>
-              )}
-            </div>
-          )}
+            )
+          })()}
 
           {/* STEP 6: Start date */}
           {step === 6 && (

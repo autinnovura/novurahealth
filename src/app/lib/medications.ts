@@ -2,6 +2,11 @@ export type MedicationRoute = 'injection' | 'oral'
 export type MedicationFrequency = 'weekly' | 'daily'
 export type MedicationStatus = 'available' | 'coming_soon' | 'discontinued' | 'restricted'
 
+export interface TitrationStep {
+  week: number
+  dose: string
+}
+
 export interface Medication {
   id: string
   brand_names: string[]
@@ -19,6 +24,10 @@ export interface Medication {
   cost_monthly_range: string
   notes?: string
   status: MedicationStatus
+  microdose_dose?: string
+  titration_schedule?: TitrationStep[]
+  storage?: { room_temp_max_days: number; room_temp_max_f: number }
+  bmi_eligibility?: { new_patient: number; transfer_patient: number; microdose: number }
 }
 
 export const MEDICATIONS: Medication[] = [
@@ -38,6 +47,16 @@ export const MEDICATIONS: Medication[] = [
     mechanism: 'GLP-1',
     cost_monthly_range: '$900–1,200',
     status: 'available',
+    microdose_dose: '0.25mg',
+    titration_schedule: [
+      { week: 1, dose: '0.25mg' },
+      { week: 5, dose: '0.5mg' },
+      { week: 9, dose: '1.0mg' },
+      { week: 13, dose: '1.7mg' },
+      { week: 17, dose: '2.4mg' },
+    ],
+    storage: { room_temp_max_days: 56, room_temp_max_f: 86 },
+    bmi_eligibility: { new_patient: 25, transfer_patient: 22, microdose: 20 },
   },
   {
     id: 'tirzepatide_injection',
@@ -55,6 +74,17 @@ export const MEDICATIONS: Medication[] = [
     mechanism: 'GLP-1/GIP',
     cost_monthly_range: '$1,000–1,300',
     status: 'available',
+    microdose_dose: '2.5mg',
+    titration_schedule: [
+      { week: 1, dose: '2.5mg' },
+      { week: 5, dose: '5mg' },
+      { week: 9, dose: '7.5mg' },
+      { week: 13, dose: '10mg' },
+      { week: 17, dose: '12.5mg' },
+      { week: 21, dose: '15mg' },
+    ],
+    storage: { room_temp_max_days: 56, room_temp_max_f: 86 },
+    bmi_eligibility: { new_patient: 25, transfer_patient: 22, microdose: 20 },
   },
   {
     id: 'orforglipron_oral',
@@ -161,6 +191,9 @@ export const MEDICATIONS: Medication[] = [
     cost_monthly_range: '$150–400',
     notes: 'Tracking only — compounded versions are not FDA-permitted as of Feb 2025. Consult your provider about your medication source.',
     status: 'available',
+    microdose_dose: '0.25mg',
+    storage: { room_temp_max_days: 56, room_temp_max_f: 86 },
+    bmi_eligibility: { new_patient: 25, transfer_patient: 22, microdose: 20 },
   },
   {
     id: 'compounded_tirzepatide',
@@ -178,6 +211,9 @@ export const MEDICATIONS: Medication[] = [
     cost_monthly_range: '$200–500',
     notes: 'Tracking only — compounded tirzepatide is available under FDA shortage provisions. Consult your provider.',
     status: 'available',
+    microdose_dose: '2.5mg',
+    storage: { room_temp_max_days: 56, room_temp_max_f: 86 },
+    bmi_eligibility: { new_patient: 25, transfer_patient: 22, microdose: 20 },
   },
   {
     id: 'retatrutide_research',

@@ -8,6 +8,7 @@ import {
   buildContextSections, estimateTokens,
   REMEMBER_FACT_TOOL, REMEMBER_FACT_PROMPT,
 } from '../../lib/conversations'
+import { findMedicationByLabel } from '../../lib/medications'
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || '',
@@ -223,6 +224,28 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'User not found', message: 'Profile not found. Please complete onboarding.' }, { status: 404 })
   }
 
+  // Fetch user profile for medication-specific knowledge filtering
+  const { data: userProfile } = await supabaseAdmin
+    .from('profiles').select('medication').eq('id', user.id).single()
+  const userMedId = userProfile?.medication
+    ? findMedicationByLabel(userProfile.medication)?.id
+    : null
+
+  // Fetch GLP-1 knowledge base for RAG
+  let knowledgeQuery = supabaseAdmin
+    .from('glp1_knowledge')
+    .select('topic, question, answer')
+    .eq('is_published', true)
+    .order('display_order')
+  if (userMedId) {
+    knowledgeQuery = knowledgeQuery.or(`related_medications.cs.{${userMedId}},related_medications.is.null`)
+  }
+  const { data: knowledge } = await knowledgeQuery
+
+  const knowledgeSection = knowledge?.length
+    ? `\n\nGLP-1 KNOWLEDGE BASE (use these for accurate answers):\n${knowledge.map(k => `Q: ${k.question}\nA: ${k.answer}`).join('\n\n')}`
+    : ''
+
   const { factsSection, summarySection } = buildContextSections(facts, conversation.summary)
 
   // Save the incoming user message
@@ -244,7 +267,9 @@ export async function POST(req: NextRequest) {
 
   const systemPrompt = `You are Trish, the NovuraHealth Transition Coach. You help GLP-1 users taper off medication, build sustainable habits, and maintain their results long-term. You're direct, confident, and you give plans — not questions. Think of yourself as a no-nonsense personal trainer who also knows nutrition and pharmacology.
 
-${context}${factsSection}${summarySection}
+You have access to a curated GLP-1 knowledge base with accurate information about storage, titration, microdose protocols, supplements, and eligibility. Use those answers when relevant — don't invent data. Never speculate on prescribing decisions.
+
+${context}${factsSection}${summarySection}${knowledgeSection}
 
 CORE RULE: GIVE ANSWERS. DO NOT INTERVIEW.
 You have their data. Use it. When asked for any plan, output the COMPLETE plan immediately. Let them refine after. Never ask more than one question, and only if truly critical data is missing.
@@ -505,6 +530,20 @@ ${REMEMBER_FACT_PROMPT}`
         required: ['exercise_type', 'duration_minutes'],
       },
     },
+    {
+      name: 'log_supplement',
+      description: 'Log a supplement the user took (B12, L-Carnitine, Glycine, NAD+, vitamin D, magnesium, etc.). Use only when the user explicitly says they took a supplement.',
+      input_schema: {
+        type: 'object' as const,
+        properties: {
+          supplement_name: { type: 'string', description: 'Name of the supplement' },
+          dose: { type: 'string', description: 'Amount taken' },
+          unit: { type: 'string', description: 'mg, g, mcg, IU, ml, capsule' },
+          notes: { type: 'string' },
+        },
+        required: ['supplement_name'],
+      },
+    },
   ]
 
   try {
@@ -742,6 +781,24 @@ async function executeToolCall(
         })
         if (error) return { success: false, error: error.message }
         return { success: true, logged: 'exercise', exercise_type: input.exercise_type }
+      }
+
+      case 'log_supplement': {
+        const isDupe = await checkRecentDuplicate('supplement_logs', userId, {
+          supplement_name: input.supplement_name,
+        })
+        if (isDupe) return { success: true, skipped: true, reason: 'duplicate within 2 min window' }
+
+        const { error } = await supabaseAdmin.from('supplement_logs').insert({
+          user_id: userId,
+          supplement_name: input.supplement_name,
+          dose: input.dose || null,
+          unit: input.unit || null,
+          notes: input.notes || null,
+          logged_at: now,
+        })
+        if (error) return { success: false, error: error.message }
+        return { success: true, logged: 'supplement', supplement_name: input.supplement_name }
       }
 
       case 'remember_fact': {

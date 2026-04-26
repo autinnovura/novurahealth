@@ -15,7 +15,7 @@ import { AreaChart, Area, ResponsiveContainer, YAxis, Tooltip } from 'recharts'
 import { format } from 'date-fns'
 import ChartTooltip from '../components/ui/ChartTooltip'
 import {
-  Utensils, Syringe, Scale, Dumbbell, Stethoscope,
+  Utensils, Syringe, Scale, Dumbbell, Stethoscope, Pill,
   Droplets, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Plus, LogOut,
   Flame, Sparkles, TrendingUp
 } from 'lucide-react'
@@ -139,7 +139,7 @@ export default function Dashboard() {
   const [dateWaterLogs, setDateWaterLogs] = useState<WaterLog[]>([])
 
   // Modals
-  const [modal, setModal] = useState<'food' | 'med' | 'weight' | 'water' | 'sideEffect' | 'checkin' | 'exercise' | null>(null)
+  const [modal, setModal] = useState<'food' | 'med' | 'weight' | 'water' | 'sideEffect' | 'checkin' | 'exercise' | 'supplement' | null>(null)
 
   // Form states
   const [injectionSite, setInjectionSite] = useState('')
@@ -162,6 +162,12 @@ export default function Dashboard() {
   const [exerciseType, setExerciseType] = useState('')
   const [exerciseDuration, setExerciseDuration] = useState('')
   const [exerciseNotes, setExerciseNotes] = useState('')
+  const [supplementName, setSupplementName] = useState('')
+  const [supplementDose, setSupplementDose] = useState('')
+  const [supplementUnit, setSupplementUnit] = useState('mg')
+  const [supplementNotes, setSupplementNotes] = useState('')
+  const [supplementRef, setSupplementRef] = useState<{ id: string; name: string; purpose: string; typical_dose: string; unit: string }[]>([])
+  const [supplementLogs, setSupplementLogs] = useState<{ id: string; supplement_name: string; dose: string; unit: string; notes: string; logged_at: string }[]>([])
   const [streak, setStreak] = useState(0)
   const [showFirstRun, setShowFirstRun] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
@@ -222,7 +228,8 @@ export default function Dashboard() {
       const today = startOfDay(new Date())
       const monthAgo = addDays(today, -30)
 
-      const [meds, weights, effects, todayFoods, monthFoods, water, checkins, exercises, medChart] = await Promise.all([
+      const weekAgo = addDays(today, -7)
+      const [meds, weights, effects, todayFoods, monthFoods, water, checkins, exercises, medChart, suppRef, suppLogs] = await Promise.all([
         supabase.from('medication_logs').select('*').eq('user_id', user.id).order('logged_at', { ascending: false }).limit(20),
         supabase.from('weight_logs').select('*').eq('user_id', user.id).order('logged_at', { ascending: false }).limit(30),
         supabase.from('side_effect_logs').select('*').eq('user_id', user.id).order('logged_at', { ascending: false }).limit(10),
@@ -232,6 +239,8 @@ export default function Dashboard() {
         supabase.from('checkin_logs').select('*').eq('user_id', user.id).order('logged_at', { ascending: false }).limit(7),
         supabase.from('exercise_logs').select('*').eq('user_id', user.id).order('logged_at', { ascending: false }).limit(10),
         supabase.from('medication_logs').select('*').eq('user_id', user.id).order('logged_at', { ascending: true }).limit(500),
+        supabase.from('supplements_reference').select('id, name, purpose, typical_dose, unit'),
+        supabase.from('supplement_logs').select('*').eq('user_id', user.id).gte('logged_at', weekAgo.toISOString()).order('logged_at', { ascending: false }),
       ])
 
       setMedLogs(meds.data || [])
@@ -245,6 +254,8 @@ export default function Dashboard() {
       setCheckinLogs(checkins.data || [])
       setExerciseLogs(exercises.data || [])
       setMedChartLogs(medChart.data || [])
+      if (suppRef.data) setSupplementRef(suppRef.data)
+      if (suppLogs.data) setSupplementLogs(suppLogs.data)
       setStreak(calculateStreak(monthFoods.data || []))
       setLoading(false)
     }
@@ -394,6 +405,24 @@ export default function Dashboard() {
       toast.success('Logged!')
 
       setModal(null); setExerciseType(''); setExerciseDuration(''); setExerciseNotes('')
+    } finally { setIsSaving(false) }
+  }
+
+  async function logSupplement() {
+    if (isSaving || !userId || !supplementName) return
+    setIsSaving(true)
+    try {
+      const { data, error } = await supabase.from('supplement_logs').insert({
+        user_id: userId,
+        supplement_name: supplementName,
+        dose: supplementDose || null,
+        unit: supplementUnit || null,
+        notes: supplementNotes || null,
+      }).select().single()
+      if (error) { toast.error('Failed to save: ' + error.message); return }
+      if (data) setSupplementLogs(prev => [data, ...prev])
+      toast.success('Logged!')
+      setModal(null); setSupplementName(''); setSupplementDose(''); setSupplementUnit('mg'); setSupplementNotes('')
     } finally { setIsSaving(false) }
   }
 
@@ -696,7 +725,7 @@ export default function Dashboard() {
           {/* Quick log chips — THE PRIMARY ACTION */}
           <motion.div variants={fadeUp} className="bg-white rounded-3xl p-4 shadow-[0_4px_24px_-8px_rgba(31,75,50,0.08)] border border-[#EAF2EB]">
             <p className="text-[10px] font-semibold text-[#6B7A72] uppercase tracking-wider mb-3 px-1">Quick log</p>
-            <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+            <div className="grid grid-cols-4 sm:grid-cols-7 gap-2">
               {[
                 { label: 'Food', action: () => setModal('food'), bg: 'bg-amber-50', iconColor: 'text-amber-600', Icon: Utensils },
                 { label: 'Injection', action: () => { setInjectionSite(nextSite); setModal('med') }, bg: 'bg-[#EAF2EB]', iconColor: 'text-[#1F4B32]', Icon: Syringe },
@@ -704,6 +733,7 @@ export default function Dashboard() {
                 { label: 'Water', action: () => setModal('water' as any), bg: 'bg-cyan-50', iconColor: 'text-cyan-600', Icon: Droplets },
                 { label: 'Exercise', action: () => setModal('exercise'), bg: 'bg-purple-50', iconColor: 'text-purple-600', Icon: Dumbbell },
                 { label: 'Symptom', action: () => setModal('sideEffect'), bg: 'bg-pink-50', iconColor: 'text-pink-600', Icon: Stethoscope },
+                { label: 'Supplement', action: () => setModal('supplement'), bg: 'bg-orange-50', iconColor: 'text-orange-600', Icon: Pill },
               ].map(({ label, action, bg, iconColor, Icon }) => (
                 <button key={label} onClick={action}
                   className="flex flex-col items-center gap-2 p-3 rounded-2xl hover:bg-[#FAFAF7] active:scale-95 transition-all duration-200 cursor-pointer">
@@ -1162,6 +1192,36 @@ export default function Dashboard() {
             </motion.div>
           )}
 
+          {/* Supplements */}
+          <motion.div variants={fadeUp} className="bg-white border border-[#EAF2EB] rounded-3xl p-5 shadow-[0_4px_24px_-8px_rgba(31,75,50,0.08)]">
+            <div className="flex justify-between items-center mb-3">
+              <h2 className="text-sm font-semibold text-[#0D1F16]">Supplements</h2>
+              <button onClick={() => setModal('supplement')} className="text-[10px] font-semibold text-[#C4742B] cursor-pointer hover:underline">+ Log</button>
+            </div>
+            {supplementLogs.length > 0 ? (
+              <div className="space-y-2">{supplementLogs.slice(0, 10).map(s => (
+                <div key={s.id} className="flex justify-between items-center py-2 border-t border-[#F5F8F3]">
+                  <div>
+                    <span className="text-sm text-[#0D1F16]">{s.supplement_name}</span>
+                    {s.dose && <span className="text-xs text-[#C4742B] ml-2 font-medium">{s.dose}{s.unit || ''}</span>}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] text-[#6B7A72]">{formatDate(s.logged_at)} · {formatTime(s.logged_at)}</span>
+                    {userId && <LogEntryMenu logType="supplement_logs" logId={s.id} onUpdate={async () => {
+                      const wk = addDays(startOfDay(new Date()), -7)
+                      const { data } = await supabase.from('supplement_logs').select('*').eq('user_id', userId).gte('logged_at', wk.toISOString()).order('logged_at', { ascending: false })
+                      if (data) setSupplementLogs(data)
+                    }}
+                      fields={[{ key: 'supplement_name', label: 'Supplement', type: 'text' }, { key: 'dose', label: 'Dose', type: 'text' }, { key: 'unit', label: 'Unit', type: 'text' }, { key: 'logged_at', label: 'Date & time', type: 'datetime-local' }]}
+                      currentValues={s} />}
+                  </div>
+                </div>
+              ))}</div>
+            ) : (
+              <p className="text-xs text-[#6B7A72]">No supplements logged this week. Tap + Log to track B12, L-Carnitine, or other supplements.</p>
+            )}
+          </motion.div>
+
           {/* Side effects */}
           {sideEffectLogs.length > 0 && (
             <motion.div variants={fadeUp} className="bg-white border border-[#EAF2EB] rounded-3xl p-5 shadow-[0_4px_24px_-8px_rgba(31,75,50,0.08)]">
@@ -1325,6 +1385,53 @@ export default function Dashboard() {
               <input type="datetime-local" value={editMedDate} onChange={e => setEditMedDate(e.target.value)} className="w-full mt-1 px-4 py-3 rounded-2xl border border-[#EAF2EB] text-sm text-[#0D1F16] outline-none focus:border-[#1F4B32] transition-all duration-300"/>
             </div>
             <button onClick={saveEditMed} className="w-full bg-gradient-to-r from-[#1F4B32] to-[#2D6B45] text-white py-3.5 rounded-2xl text-sm font-semibold cursor-pointer hover:shadow-[0_4px_16px_-4px_rgba(31,75,50,0.4)] transition-all duration-300">Save Changes</button>
+          </motion.div>
+        </div>
+      )}
+
+      {modal === 'supplement' && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-end sm:items-center justify-center z-50 px-4 pb-4" onClick={e => { if (e.target === e.currentTarget) setModal(null) }}>
+          <motion.div initial={{ opacity: 0, y: 40 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+            className="bg-white rounded-3xl w-full max-w-md p-6 space-y-4 max-h-[90vh] overflow-y-auto shadow-[0_24px_80px_-16px_rgba(0,0,0,0.2)]">
+            <div className="flex justify-between items-center"><h2 className="text-base font-bold text-[#0D1F16]">Log Supplement</h2><button onClick={() => setModal(null)} className="w-8 h-8 rounded-xl bg-[#F5F8F3] flex items-center justify-center text-[#6B7A72] hover:bg-[#EAF2EB] cursor-pointer transition-all duration-300">✕</button></div>
+            {supplementRef.length > 0 && (
+              <div>
+                <p className="text-[10px] font-semibold text-[#6B7A72] uppercase tracking-wider mb-2">Quick Select</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {supplementRef.map(s => (
+                    <button key={s.id} onClick={() => { setSupplementName(s.name); setSupplementDose(s.typical_dose); setSupplementUnit(s.unit) }}
+                      className={`text-xs px-3.5 py-2 rounded-full border cursor-pointer transition-all duration-300 ${supplementName === s.name ? 'border-[#C4742B] bg-[#FFF4E8] text-[#C4742B] font-semibold' : 'border-[#EAF2EB] text-[#6B7A72]'}`}>
+                      {s.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            <div>
+              <label className="text-[9px] font-semibold text-[#6B7A72] uppercase tracking-wider">Supplement Name</label>
+              <input type="text" autoComplete="off" value={supplementName} onChange={e => setSupplementName(e.target.value)} placeholder="e.g. B12, Magnesium, Vitamin D"
+                className="w-full mt-1 px-4 py-3 rounded-2xl border border-[#EAF2EB] text-sm text-[#0D1F16] outline-none focus:border-[#C4742B] placeholder:text-[#6B7A72]/40 transition-all duration-300" />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="text-[9px] font-semibold text-[#6B7A72] uppercase tracking-wider">Dose</label>
+                <input type="text" autoComplete="off" value={supplementDose} onChange={e => setSupplementDose(e.target.value)} placeholder="1000"
+                  className="w-full mt-1 px-4 py-3 rounded-2xl border border-[#EAF2EB] text-sm text-[#0D1F16] outline-none focus:border-[#C4742B] transition-all duration-300" />
+              </div>
+              <div>
+                <label className="text-[9px] font-semibold text-[#6B7A72] uppercase tracking-wider">Unit</label>
+                <div className="flex flex-wrap gap-1 mt-1">
+                  {['mg', 'mcg', 'g', 'IU', 'ml', 'capsule'].map(u => (
+                    <button key={u} onClick={() => setSupplementUnit(u)}
+                      className={`text-[10px] px-2 py-1.5 rounded-lg border cursor-pointer transition-all ${supplementUnit === u ? 'border-[#C4742B] bg-[#FFF4E8] text-[#C4742B] font-semibold' : 'border-[#EAF2EB] text-[#6B7A72]'}`}>{u}</button>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <input type="text" autoComplete="off" value={supplementNotes} onChange={e => setSupplementNotes(e.target.value)} placeholder="Notes (optional)"
+              className="w-full px-4 py-3 rounded-2xl border border-[#EAF2EB] text-sm text-[#0D1F16] outline-none placeholder:text-[#6B7A72]/40 transition-all duration-300" />
+            <button onClick={logSupplement} disabled={!supplementName.trim() || isSaving}
+              className="w-full bg-[#C4742B] text-white py-3.5 rounded-2xl text-sm font-semibold cursor-pointer disabled:opacity-30 hover:shadow-[0_4px_16px_-4px_rgba(196,116,43,0.4)] transition-all duration-300">Save</button>
           </motion.div>
         </div>
       )}
