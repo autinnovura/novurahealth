@@ -1,12 +1,12 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState, useEffect, useRef, Suspense } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '../lib/supabase'
 import VoiceInput from '../components/VoiceInput'
 import BottomNav from '../components/BottomNav'
 import PlanPreview from '../components/PlanPreview'
-import { ArrowLeft, Check, ChevronDown, ChevronUp, Download, Dumbbell, UtensilsCrossed, MessageCircle, Lock, Unlock, X, Plus, BookOpen, Pin } from 'lucide-react'
+import { ArrowLeft, Check, ChevronDown, ChevronUp, Download, Dumbbell, UtensilsCrossed, MessageCircle, Lock, Unlock, X, Plus, BookOpen, Pin, ChevronRight } from 'lucide-react'
 import { AnimatePresence, motion } from 'framer-motion'
 
 type Phase = 'exploring' | 'preparing' | 'tapering' | 'maintenance' | 'off_medication'
@@ -116,13 +116,18 @@ function computePhase(
   return 'maintenance'
 }
 
-export default function Maintenance() {
+function MaintenanceInner() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const initialTab = (searchParams.get('tab') as 'plan' | 'nutrition' | 'exercise' | 'coach') || 'plan'
+  const actionParam = searchParams.get('action')
+  const contextParam = searchParams.get('context')
   const [userId, setUserId] = useState<string | null>(null)
   const [profile, setProfile] = useState<any>(null)
   const [plan, setPlan] = useState<TaperPlan | null>(null)
   const [loading, setLoading] = useState(true)
-  const [activeTab, setActiveTab] = useState<'plan' | 'nutrition' | 'exercise' | 'coach'>('plan')
+  const [activeTab, setActiveTab] = useState<'plan' | 'nutrition' | 'exercise' | 'coach'>(initialTab)
+  const [actionHandled, setActionHandled] = useState(false)
 
   // Assessment
   const [readiness, setReadiness] = useState<Record<string, boolean>>({})
@@ -251,6 +256,25 @@ export default function Maintenance() {
     window.visualViewport?.addEventListener('resize', handler)
     return () => window.visualViewport?.removeEventListener('resize', handler)
   }, [])
+
+  // Handle action/context query params — auto-send to coach
+  useEffect(() => {
+    if (actionHandled || loading || !userId) return
+    if (actionParam) {
+      setActionHandled(true)
+      setActiveTab('coach')
+      const actionMessages: Record<string, string> = {
+        generate_daily_meal: 'Generate me a daily meal plan',
+        generate_weekly_meal: 'Generate me a weekly meal plan',
+        generate_daily_workout: "Generate me today's workout",
+        generate_weekly_workout: 'Generate me a weekly exercise plan',
+      }
+      const msg = actionMessages[actionParam]
+      if (msg) {
+        setTimeout(() => sendChat(msg), 500)
+      }
+    }
+  }, [actionParam, actionHandled, loading, userId])
 
   useEffect(() => {
     if (phaseInfoOpen) {
@@ -768,23 +792,47 @@ export default function Maintenance() {
 
         {/* ═══ NUTRITION TAB ═══ */}
         {activeTab === 'nutrition' && (<>
-          {/* Meal plan generator */}
-          <div className="bg-white border border-[#EAF2EB] rounded-3xl p-6 space-y-3 shadow-[0_4px_24px_-8px_rgba(31,75,50,0.08)]">
-            <div className="flex items-center gap-2">
-              <UtensilsCrossed className="w-4 h-4 text-[#1F4B32]" />
-              <h3 className="text-sm font-semibold text-[#0D1F16]">Generate Meal Plan</h3>
+          {/* Meal plan generator — only shown when no saved plans exist */}
+          {savedMealPlans.length === 0 ? (
+            <div className="bg-white border border-[#EAF2EB] rounded-3xl p-6 space-y-3 shadow-[0_4px_24px_-8px_rgba(31,75,50,0.08)]">
+              <div className="flex items-center gap-2">
+                <UtensilsCrossed className="w-4 h-4 text-[#1F4B32]" />
+                <h3 className="text-sm font-semibold text-[#0D1F16]">Generate Meal Plan</h3>
+              </div>
+              <p className="text-xs text-[#6B7A72]">Let Trish build you a plan based on your protein and calorie targets.</p>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <button onClick={() => { setActiveTab('coach'); setTimeout(() => sendChat('Generate me a daily meal plan'), 300) }}
+                  className="flex-1 bg-gradient-to-r from-[#1F4B32] to-[#2D6B45] text-white py-3 rounded-2xl text-sm font-semibold cursor-pointer hover:shadow-[0_4px_16px_-4px_rgba(31,75,50,0.4)] transition-all duration-300">
+                  Daily plan
+                </button>
+                <button onClick={() => { setActiveTab('coach'); setTimeout(() => sendChat('Generate me a weekly meal plan'), 300) }}
+                  className="flex-1 py-3 rounded-2xl text-sm font-semibold border border-[#1F4B32] text-[#1F4B32] cursor-pointer hover:bg-[#F5F8F3] transition-all duration-300">
+                  Weekly plan
+                </button>
+              </div>
             </div>
-            <div className="bg-[#F5F8F3] rounded-2xl p-1 flex gap-1">
-              {(['daily', 'weekly'] as const).map(t => (
-                <button key={t} onClick={() => setMealPlanType(t)}
-                  className={`flex-1 py-2 rounded-xl text-xs font-semibold capitalize cursor-pointer transition-all duration-300 ${mealPlanType === t ? 'bg-white shadow-sm text-[#1F4B32]' : 'text-[#6B7A72]'}`}>{t}</button>
-              ))}
+          ) : (
+            /* Talk to Trish CTA when active plans exist */
+            <div className="bg-white border border-[#EAF2EB] rounded-3xl p-5 shadow-[0_4px_24px_-8px_rgba(31,75,50,0.08)]">
+              <div className="flex items-center gap-2 mb-3">
+                <UtensilsCrossed className="w-4 h-4 text-[#1F4B32]" />
+                <h3 className="text-sm font-semibold text-[#0D1F16]">Your Meal Plans</h3>
+              </div>
+              <button onClick={() => setActiveTab('coach')}
+                className="w-full flex items-center justify-between p-3.5 rounded-2xl bg-gradient-to-br from-[#F5F8F3] to-white border border-[#EAF2EB] hover:scale-[1.01] active:scale-[0.99] transition-transform cursor-pointer">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[#C4742B] to-[#D4843B] flex items-center justify-center">
+                    <MessageCircle className="w-4 h-4 text-white" />
+                  </div>
+                  <div className="text-left">
+                    <div className="text-xs font-semibold text-[#0D1F16]">Want a new plan?</div>
+                    <div className="text-[10px] text-[#6B7A72]">Ask Trish for adjustments or a fresh meal plan</div>
+                  </div>
+                </div>
+                <ChevronRight className="w-4 h-4 text-[#6B7A72]" />
+              </button>
             </div>
-            <button onClick={generateMealPlan} disabled={generating === 'meal'}
-              className="w-full bg-gradient-to-r from-[#1F4B32] to-[#2D6B45] text-white py-3 rounded-2xl text-sm font-semibold cursor-pointer hover:shadow-[0_4px_16px_-4px_rgba(31,75,50,0.4)] transition-all duration-300 disabled:opacity-30">
-              {generating === 'meal' ? 'Generating...' : `Generate ${mealPlanType} meal plan`}
-            </button>
-          </div>
+          )}
 
           {/* Recipe generator */}
           <div className="bg-white border border-[#EAF2EB] rounded-3xl p-6 space-y-3 shadow-[0_4px_24px_-8px_rgba(31,75,50,0.08)]">
@@ -894,62 +942,47 @@ export default function Maintenance() {
 
         {/* ═══ EXERCISE TAB ═══ */}
         {activeTab === 'exercise' && (<>
-          <div className="bg-white border border-[#EAF2EB] rounded-3xl p-6 space-y-4 shadow-[0_4px_24px_-8px_rgba(31,75,50,0.08)]">
-            <div className="flex items-center gap-2">
-              <Dumbbell className="w-4 h-4 text-[#1F4B32]" />
-              <h3 className="text-sm font-semibold text-[#0D1F16]">Generate Exercise Plan</h3>
-            </div>
-
-            <div>
-              <p className="text-[10px] font-semibold text-[#6B7A72] uppercase tracking-wider mb-2">Plan Type</p>
-              <div className="bg-[#F5F8F3] rounded-2xl p-1 flex gap-1">
-                {(['daily', 'weekly'] as const).map(t => (
-                  <button key={t} onClick={() => setExercisePlanType(t)}
-                    className={`flex-1 py-2 rounded-xl text-xs font-semibold capitalize cursor-pointer transition-all duration-300 ${exercisePlanType === t ? 'bg-white shadow-sm text-[#1F4B32]' : 'text-[#6B7A72]'}`}>{t}</button>
-                ))}
+          {/* Exercise plan generator — only shown when no saved plans exist */}
+          {savedWorkoutPlans.length === 0 ? (
+            <div className="bg-white border border-[#EAF2EB] rounded-3xl p-6 space-y-3 shadow-[0_4px_24px_-8px_rgba(31,75,50,0.08)]">
+              <div className="flex items-center gap-2">
+                <Dumbbell className="w-4 h-4 text-[#1F4B32]" />
+                <h3 className="text-sm font-semibold text-[#0D1F16]">Generate Exercise Plan</h3>
               </div>
-              <p className="text-[10px] text-[#6B7A72] mt-1.5">
-                {exercisePlanType === 'daily' ? 'A single workout for today.' : 'A full week of workouts with rest days planned in.'}
-              </p>
-            </div>
-
-            <div>
-              <p className="text-[10px] font-semibold text-[#6B7A72] uppercase tracking-wider mb-2">Fitness Level</p>
-              <div className="bg-[#F5F8F3] rounded-2xl p-1 flex gap-1">
-                {['Beginner', 'Intermediate', 'Advanced'].map(l => (
-                  <button key={l} onClick={() => setFitnessLevel(l)}
-                    className={`flex-1 py-2 rounded-xl text-xs font-semibold cursor-pointer transition-all duration-300 ${fitnessLevel === l ? 'bg-white shadow-sm text-[#1F4B32]' : 'text-[#6B7A72]'}`}>{l}</button>
-                ))}
+              <p className="text-xs text-[#6B7A72]">Let Trish build you a plan based on your fitness level and goals.</p>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <button onClick={() => { setActiveTab('coach'); setTimeout(() => sendChat("Generate me today's workout"), 300) }}
+                  className="flex-1 bg-gradient-to-r from-[#1F4B32] to-[#2D6B45] text-white py-3 rounded-2xl text-sm font-semibold cursor-pointer hover:shadow-[0_4px_16px_-4px_rgba(31,75,50,0.4)] transition-all duration-300">
+                  Today&apos;s workout
+                </button>
+                <button onClick={() => { setActiveTab('coach'); setTimeout(() => sendChat('Generate me a weekly exercise plan'), 300) }}
+                  className="flex-1 py-3 rounded-2xl text-sm font-semibold border border-[#1F4B32] text-[#1F4B32] cursor-pointer hover:bg-[#F5F8F3] transition-all duration-300">
+                  Weekly plan
+                </button>
               </div>
             </div>
-
-            <div>
-              <p className="text-[10px] font-semibold text-[#6B7A72] uppercase tracking-wider mb-2">Equipment</p>
-              <div className="bg-[#F5F8F3] rounded-2xl p-1 flex gap-1">
-                {['None', 'Dumbbells', 'Full Gym'].map(e => (
-                  <button key={e} onClick={() => setEquipment(e)}
-                    className={`flex-1 py-2 rounded-xl text-xs font-semibold cursor-pointer transition-all duration-300 ${equipment === e ? 'bg-white shadow-sm text-[#1F4B32]' : 'text-[#6B7A72]'}`}>{e}</button>
-                ))}
+          ) : (
+            /* Talk to Trish CTA when active plans exist */
+            <div className="bg-white border border-[#EAF2EB] rounded-3xl p-5 shadow-[0_4px_24px_-8px_rgba(31,75,50,0.08)]">
+              <div className="flex items-center gap-2 mb-3">
+                <Dumbbell className="w-4 h-4 text-[#1F4B32]" />
+                <h3 className="text-sm font-semibold text-[#0D1F16]">Your Workout Plans</h3>
               </div>
-            </div>
-
-            {exercisePlanType === 'weekly' && (
-              <div>
-                <p className="text-[10px] font-semibold text-[#6B7A72] uppercase tracking-wider mb-2">Days Per Week</p>
-                <div className="bg-[#F5F8F3] rounded-2xl p-1 flex gap-1">
-                  {[3, 4, 5, 6].map(d => (
-                    <button key={d} onClick={() => setDaysPerWeek(d)}
-                      className={`flex-1 py-2 rounded-xl text-xs font-semibold cursor-pointer transition-all duration-300 ${daysPerWeek === d ? 'bg-white shadow-sm text-[#1F4B32]' : 'text-[#6B7A72]'}`}>{d} days</button>
-                  ))}
+              <button onClick={() => setActiveTab('coach')}
+                className="w-full flex items-center justify-between p-3.5 rounded-2xl bg-gradient-to-br from-[#F5F8F3] to-white border border-[#EAF2EB] hover:scale-[1.01] active:scale-[0.99] transition-transform cursor-pointer">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[#C4742B] to-[#D4843B] flex items-center justify-center">
+                    <MessageCircle className="w-4 h-4 text-white" />
+                  </div>
+                  <div className="text-left">
+                    <div className="text-xs font-semibold text-[#0D1F16]">Want a new plan?</div>
+                    <div className="text-[10px] text-[#6B7A72]">Ask Trish for adjustments or a fresh workout plan</div>
+                  </div>
                 </div>
-              </div>
-            )}
-
-            <button onClick={generateExercisePlan} disabled={generating === 'exercise'}
-              className="w-full bg-gradient-to-r from-[#1F4B32] to-[#2D6B45] text-white py-3 rounded-2xl text-sm font-semibold cursor-pointer hover:shadow-[0_4px_16px_-4px_rgba(31,75,50,0.4)] transition-all duration-300 disabled:opacity-30">
-              {generating === 'exercise' ? 'Generating...' : `Generate ${exercisePlanType === 'daily' ? "Today's Workout" : 'Weekly Plan'}`}
-            </button>
-          </div>
+                <ChevronRight className="w-4 h-4 text-[#6B7A72]" />
+              </button>
+            </div>
+          )}
 
           {/* Exercise preview (editable, not yet saved) */}
           {exercisePreview && (
@@ -1218,5 +1251,21 @@ export default function Maintenance() {
 
       <BottomNav />
     </div>
+  )
+}
+
+export default function Maintenance() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-[#FAFAF7] flex items-center justify-center">
+        <div className="space-y-4 w-full max-w-2xl px-4">
+          <div className="h-32 rounded-3xl bg-gradient-to-r from-[#EAF2EB] to-[#F5F8F3] animate-pulse" />
+          <div className="h-10 rounded-2xl bg-[#EAF2EB]/60 animate-pulse" />
+          <div className="h-48 rounded-3xl bg-gradient-to-r from-[#EAF2EB] to-[#F5F8F3] animate-pulse" />
+        </div>
+      </div>
+    }>
+      <MaintenanceInner />
+    </Suspense>
   )
 }

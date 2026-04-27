@@ -8,7 +8,7 @@ import DataImport from '../components/DataImport'
 import BottomNav from '../components/BottomNav'
 import InstallAppCard from '../components/InstallAppCard'
 import MedicationPicker from '../components/MedicationPicker'
-import { ArrowLeft, ChevronRight, Download, AlertTriangle, User, Lock, Database, Brain, Pin, PinOff, Pencil, Trash2, Plus, MessageCircle, X, DollarSign } from 'lucide-react'
+import { ArrowLeft, ChevronRight, Download, AlertTriangle, User, Lock, Database, Brain, Pin, PinOff, Pencil, Trash2, Plus, MessageCircle, X, DollarSign, Bell } from 'lucide-react'
 
 interface Profile {
   name: string; medication: string; dose: string; start_date: string
@@ -17,6 +17,9 @@ interface Profile {
   protein_target_g?: number | null; water_target_oz?: number | null
   injection_day?: string | null; injection_time?: string | null
   medication_metadata?: any
+  push_reminders_enabled?: boolean | null
+  pre_shot_reminder_enabled?: boolean | null
+  weekly_digest_enabled?: boolean | null
 }
 
 const GOALS = ['Lose weight', 'Manage blood sugar', 'Reduce appetite', 'Improve health markers', 'Other']
@@ -47,6 +50,12 @@ export default function Settings() {
   const [injectionDay, setInjectionDay] = useState('')
   const [injectionTime, setInjectionTime] = useState('')
   const [medicationMetadata, setMedicationMetadata] = useState<any>(null)
+
+  // Notifications
+  const [pushEnabled, setPushEnabled] = useState(false)
+  const [preShotEnabled, setPreShotEnabled] = useState(true)
+  const [weeklyDigestEnabled, setWeeklyDigestEnabled] = useState(true)
+  const [pushLoading, setPushLoading] = useState(false)
 
   // Password change
   const [showPasswordChange, setShowPasswordChange] = useState(false)
@@ -98,6 +107,9 @@ export default function Settings() {
         setInjectionDay(p.injection_day || '')
         setInjectionTime(p.injection_time || '')
         setMedicationMetadata(p.medication_metadata || null)
+        setPushEnabled(p.push_reminders_enabled ?? false)
+        setPreShotEnabled(p.pre_shot_reminder_enabled ?? true)
+        setWeeklyDigestEnabled(p.weekly_digest_enabled ?? true)
       }
       setLoading(false)
     }
@@ -159,6 +171,50 @@ export default function Settings() {
       toast.error('Failed to delete account')
       setDeleting(false)
     }
+  }
+
+  async function togglePush() {
+    if (!userId) return
+    setPushLoading(true)
+    try {
+      if (pushEnabled) {
+        // Disable push — remove subscription
+        await fetch('/api/push-subscription', { method: 'DELETE' })
+        setPushEnabled(false)
+        setPreShotEnabled(false)
+        toast.success('Push notifications disabled')
+      } else {
+        // Request permission and subscribe
+        const permission = await Notification.requestPermission()
+        if (permission !== 'granted') {
+          toast.error('Notification permission denied')
+          setPushLoading(false)
+          return
+        }
+        const reg = await navigator.serviceWorker.ready
+        const sub = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY,
+        })
+        const res = await fetch('/api/push-subscription', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ subscription: sub.toJSON() }),
+        })
+        if (!res.ok) throw new Error('Failed to save subscription')
+        setPushEnabled(true)
+        setPreShotEnabled(true)
+        toast.success('Push notifications enabled')
+      }
+    } catch (err) {
+      toast.error('Failed to update push settings')
+    }
+    setPushLoading(false)
+  }
+
+  async function updateNotificationPref(field: string, value: boolean) {
+    if (!userId) return
+    await supabase.from('profiles').update({ [field]: value }).eq('id', userId)
   }
 
   async function loadFacts() {
@@ -431,6 +487,66 @@ export default function Settings() {
         {activeSection === 'account' && (<>
           {/* Install app */}
           <InstallAppCard />
+
+          {/* Notifications */}
+          <div className="bg-white border border-[#EAF2EB] rounded-3xl shadow-[0_4px_24px_-8px_rgba(31,75,50,0.08)] p-6 space-y-4">
+            <div className="flex items-center gap-2">
+              <Bell className="w-4 h-4 text-[#1F4B32]" strokeWidth={1.5} />
+              <h2 className="text-sm font-semibold text-[#0D1F16]" style={{ fontFamily: 'var(--font-fraunces)' }}>Notifications</h2>
+            </div>
+
+            {/* Injection reminders (push) */}
+            <div className="flex items-center justify-between py-2">
+              <div className="flex-1 min-w-0 pr-4">
+                <p className="text-sm text-[#0D1F16]">Injection reminders</p>
+                <p className="text-[10px] text-[#6B7A72] mt-0.5">Push notification when it's time for your shot</p>
+              </div>
+              <button
+                onClick={togglePush}
+                disabled={pushLoading}
+                className={`relative w-11 h-6 rounded-full cursor-pointer transition-all duration-300 shrink-0 disabled:opacity-50 ${pushEnabled ? 'bg-[#1F4B32]' : 'bg-[#D1D5D3]'}`}
+              >
+                <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all duration-300 ${pushEnabled ? 'left-[22px]' : 'left-0.5'}`} />
+              </button>
+            </div>
+
+            {/* Day-before heads-up */}
+            <div className={`flex items-center justify-between py-2 border-t border-[#F5F8F3] ${!pushEnabled ? 'opacity-40' : ''}`}>
+              <div className="flex-1 min-w-0 pr-4">
+                <p className="text-sm text-[#0D1F16]">Day-before heads-up</p>
+                <p className="text-[10px] text-[#6B7A72] mt-0.5">Push notification 24 hours before your shot</p>
+              </div>
+              <button
+                onClick={async () => {
+                  const next = !preShotEnabled
+                  setPreShotEnabled(next)
+                  await updateNotificationPref('pre_shot_reminder_enabled', next)
+                }}
+                disabled={!pushEnabled}
+                className={`relative w-11 h-6 rounded-full cursor-pointer transition-all duration-300 shrink-0 disabled:cursor-not-allowed ${preShotEnabled && pushEnabled ? 'bg-[#1F4B32]' : 'bg-[#D1D5D3]'}`}
+              >
+                <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all duration-300 ${preShotEnabled && pushEnabled ? 'left-[22px]' : 'left-0.5'}`} />
+              </button>
+            </div>
+
+            {/* Weekly digest email */}
+            <div className="flex items-center justify-between py-2 border-t border-[#F5F8F3]">
+              <div className="flex-1 min-w-0 pr-4">
+                <p className="text-sm text-[#0D1F16]">Weekly digest email</p>
+                <p className="text-[10px] text-[#6B7A72] mt-0.5">Sunday evening summary of your week</p>
+              </div>
+              <button
+                onClick={async () => {
+                  const next = !weeklyDigestEnabled
+                  setWeeklyDigestEnabled(next)
+                  await updateNotificationPref('weekly_digest_enabled', next)
+                }}
+                className={`relative w-11 h-6 rounded-full cursor-pointer transition-all duration-300 shrink-0 ${weeklyDigestEnabled ? 'bg-[#1F4B32]' : 'bg-[#D1D5D3]'}`}
+              >
+                <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all duration-300 ${weeklyDigestEnabled ? 'left-[22px]' : 'left-0.5'}`} />
+              </button>
+            </div>
+          </div>
 
           {/* Password */}
           <div className="bg-white border border-[#EAF2EB] rounded-3xl shadow-[0_4px_24px_-8px_rgba(31,75,50,0.08)] p-6 space-y-4">
