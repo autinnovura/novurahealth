@@ -1,27 +1,40 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { z } from 'zod'
 import { getAuthedUser, unauthorized } from '../../lib/auth'
+import { validateRequestBody } from '../../lib/validation'
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || '',
   process.env.SUPABASE_SERVICE_ROLE_KEY || ''
 )
 
+// Answers are a map of question-key -> boolean. Keys starting with `__` are
+// reserved for internal metadata (e.g. __confirmed_ready) and may carry any
+// JSON-serializable value; only non-meta boolean answers count toward the score.
+const readinessBodySchema = z
+  .object({
+    answers: z.record(z.unknown()),
+  })
+  .refine(
+    (data) => Object.keys(data.answers).length > 0 && Object.keys(data.answers).length <= 100,
+    { message: '`answers` must contain between 1 and 100 entries.' }
+  )
+  .refine(
+    (data) =>
+      Object.entries(data.answers).every(
+        ([key, val]) => key.startsWith('__') || typeof val === 'boolean'
+      ),
+    { message: 'Non-meta answer values must be booleans (use __ prefix for metadata keys).' }
+  )
+
 export async function POST(req: NextRequest) {
   const user = await getAuthedUser()
   if (!user) return unauthorized()
 
-  let body: { answers: Record<string, boolean> }
-  try {
-    body = await req.json()
-  } catch {
-    return NextResponse.json({ error: 'Invalid body', message: 'Invalid request.' }, { status: 400 })
-  }
-
-  const { answers } = body
-  if (!answers || typeof answers !== 'object') {
-    return NextResponse.json({ error: 'Missing answers', message: 'No answers provided.' }, { status: 400 })
-  }
+  const validated = await validateRequestBody(req, readinessBodySchema)
+  if (!validated.success) return validated.response
+  const { answers } = validated.data
 
   // Count only boolean true values, excluding internal keys like __confirmed_ready
   const score = Object.entries(answers).filter(

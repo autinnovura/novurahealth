@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { z } from 'zod'
 import { getAuthedUser, unauthorized } from '../../lib/auth'
 import { chatLimiter, checkRateLimit } from '../../lib/rate-limit'
+import { validateRequestBody } from '../../lib/validation'
 import {
   getActiveConversation, createConversation, getRecentMessages,
   getUserFacts, saveMessage, saveFact, maybeUpdateSummary,
@@ -9,6 +11,29 @@ import {
   REMEMBER_FACT_TOOL, REMEMBER_FACT_PROMPT,
 } from '../../lib/conversations'
 import { findMedicationByLabel } from '../../lib/medications'
+
+// Request body shape. Supports both:
+//   - new format: { message, conversationId? }
+//   - legacy format: { messages: [{role, content}, ...] } (last item is the new user message)
+// At least one of `message` or a non-empty `messages` must be present.
+const chatBodySchema = z
+  .object({
+    message: z.string().min(1).max(10_000).optional(),
+    conversationId: z.string().uuid().optional(),
+    messages: z
+      .array(
+        z.object({
+          role: z.enum(['user', 'assistant']),
+          content: z.string().min(1).max(10_000),
+        })
+      )
+      .max(200)
+      .optional(),
+  })
+  .refine(
+    (data) => Boolean(data.message) || (data.messages && data.messages.length > 0),
+    { message: 'Provide either `message` or a non-empty `messages` array.' }
+  )
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || '',
@@ -188,15 +213,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Rate limit exceeded. Please slow down.' }, { status: 429 })
   }
 
-  let body: { message?: string; conversationId?: string; messages?: any }
-  try {
-    body = await req.json()
-  } catch {
-    return NextResponse.json({ error: 'Invalid request body' }, { status: 400 })
-  }
+  const validated = await validateRequestBody(req, chatBodySchema)
+  if (!validated.success) return validated.response
+  const body = validated.data
 
-  // Support both new { message, conversationId } and legacy { messages } format
-  const newUserMessage = body.message || body.messages?.[body.messages.length - 1]?.content
+  // Support both new { message, conversationId } and legacy { messages } format.
+  // The schema's refine() guarantees at least one of these resolves to a string.
+  const newUserMessage =
+    body.message ?? body.messages?.[body.messages.length - 1]?.content
   if (!newUserMessage) {
     return NextResponse.json({ error: 'Missing data' }, { status: 400 })
   }
