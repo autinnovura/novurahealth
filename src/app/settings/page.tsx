@@ -59,6 +59,7 @@ export default function Settings() {
 
   // Password change
   const [showPasswordChange, setShowPasswordChange] = useState(false)
+  const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [passwordError, setPasswordError] = useState('')
@@ -141,13 +142,27 @@ export default function Settings() {
 
   async function changePassword() {
     setPasswordError('')
-    if (newPassword.length < 6) { setPasswordError('Password must be at least 6 characters'); return }
+    if (!currentPassword) { setPasswordError('Enter your current password'); return }
+    if (newPassword.length < 8) { setPasswordError('New password must be at least 8 characters'); return }
     if (newPassword !== confirmPassword) { setPasswordError('Passwords do not match'); return }
     setChangingPassword(true)
+
+    // Verify current password before allowing change
+    const { error: verifyError } = await supabase.auth.signInWithPassword({
+      email,
+      password: currentPassword,
+    })
+    if (verifyError) {
+      setChangingPassword(false)
+      setPasswordError('Current password is incorrect')
+      return
+    }
+
     const { error } = await supabase.auth.updateUser({ password: newPassword })
     setChangingPassword(false)
     if (error) { setPasswordError(error.message); return }
     setPasswordSuccess(true)
+    setCurrentPassword('')
     setNewPassword('')
     setConfirmPassword('')
     setTimeout(() => { setPasswordSuccess(false); setShowPasswordChange(false) }, 2000)
@@ -560,19 +575,24 @@ export default function Settings() {
             {showPasswordChange ? (
               <div className="space-y-3">
                 <div>
-                  <label className="text-[10px] font-semibold text-[#6B7A72] uppercase tracking-wider">New Password</label>
-                  <input type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} placeholder="Min 6 characters"
+                  <label className="text-[10px] font-semibold text-[#6B7A72] uppercase tracking-wider">Current Password</label>
+                  <input type="password" value={currentPassword} onChange={e => setCurrentPassword(e.target.value)} placeholder="Enter current password"
                     className="w-full mt-1 px-3 py-2.5 rounded-2xl border border-[#EAF2EB] text-sm text-[#0D1F16] outline-none focus:border-[#1F4B32] transition-all duration-300 placeholder:text-[#6B7A72]/40"/>
                 </div>
                 <div>
-                  <label className="text-[10px] font-semibold text-[#6B7A72] uppercase tracking-wider">Confirm Password</label>
-                  <input type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} placeholder="Re-enter password"
+                  <label className="text-[10px] font-semibold text-[#6B7A72] uppercase tracking-wider">New Password</label>
+                  <input type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} placeholder="Min 8 characters"
+                    className="w-full mt-1 px-3 py-2.5 rounded-2xl border border-[#EAF2EB] text-sm text-[#0D1F16] outline-none focus:border-[#1F4B32] transition-all duration-300 placeholder:text-[#6B7A72]/40"/>
+                </div>
+                <div>
+                  <label className="text-[10px] font-semibold text-[#6B7A72] uppercase tracking-wider">Confirm New Password</label>
+                  <input type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} placeholder="Re-enter new password"
                     className="w-full mt-1 px-3 py-2.5 rounded-2xl border border-[#EAF2EB] text-sm text-[#0D1F16] outline-none focus:border-[#1F4B32] transition-all duration-300 placeholder:text-[#6B7A72]/40"/>
                 </div>
                 {passwordError && <p className="text-xs text-red-500">{passwordError}</p>}
                 {passwordSuccess && <p className="text-xs text-[#1F4B32] font-medium">✓ Password updated</p>}
                 <div className="flex gap-2">
-                  <button onClick={() => { setShowPasswordChange(false); setNewPassword(''); setConfirmPassword(''); setPasswordError('') }}
+                  <button onClick={() => { setShowPasswordChange(false); setCurrentPassword(''); setNewPassword(''); setConfirmPassword(''); setPasswordError('') }}
                     className="flex-1 py-2.5 rounded-2xl border border-[#EAF2EB] text-sm text-[#6B7A72] font-medium cursor-pointer hover:bg-[#F5F8F3] transition-all duration-300">Cancel</button>
                   <button onClick={changePassword} disabled={changingPassword}
                     className="flex-1 py-2.5 rounded-2xl bg-gradient-to-r from-[#1F4B32] to-[#2D6B45] text-white text-sm font-semibold cursor-pointer hover:shadow-lg transition-all duration-300 disabled:opacity-50">

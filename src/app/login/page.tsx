@@ -24,7 +24,7 @@ export default function Login() {
     e.preventDefault()
     setError('')
     if (!email.trim() || !password.trim()) { setError('Please fill in all fields'); return }
-    if (isSignUp && password.length < 6) { setError('Password must be at least 6 characters'); return }
+    if (isSignUp && password.length < 8) { setError('Password must be at least 8 characters'); return }
     setLoading(true)
 
     if (isSignUp) {
@@ -33,10 +33,20 @@ export default function Login() {
       if (err) { setError(err.message); return }
       router.push('/onboarding')
     } else {
-      const { error: err } = await supabase.auth.signInWithPassword({ email, password })
-      setLoading(false)
-      if (err) { setError(err.message); return }
-      router.push('/dashboard')
+      try {
+        const res = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password }),
+        })
+        const data = await res.json()
+        setLoading(false)
+        if (!res.ok) { setError(data.error || 'Login failed'); return }
+        router.push('/dashboard')
+      } catch {
+        setLoading(false)
+        setError('Something went wrong. Please try again.')
+      }
     }
   }
 

@@ -14,7 +14,7 @@ const supabaseAdmin = createClient(
 // JSON-serializable value; only non-meta boolean answers count toward the score.
 const readinessBodySchema = z
   .object({
-    answers: z.record(z.unknown()),
+    answers: z.record(z.string(), z.unknown()),
   })
   .refine(
     (data) => Object.keys(data.answers).length > 0 && Object.keys(data.answers).length <= 100,
