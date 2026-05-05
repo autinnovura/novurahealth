@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import Anthropic from '@anthropic-ai/sdk'
 import { getAuthedUser, unauthorized } from '../../lib/auth'
 import { chatLimiter, checkRateLimit } from '../../lib/rate-limit'
 import {
@@ -14,6 +15,8 @@ const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || '',
   process.env.SUPABASE_SERVICE_ROLE_KEY || ''
 )
+
+const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
 async function getUserContext(userId: string) {
   const now = new Date()
@@ -547,61 +550,33 @@ ${REMEMBER_FACT_PROMPT}`
   ]
 
   try {
-    const apiHeaders = {
-      'Content-Type': 'application/json',
-      'x-api-key': process.env.ANTHROPIC_API_KEY || '',
-      'anthropic-version': '2023-06-01',
-    }
-
     const MAX_ITERATIONS = 5
-    // Build Claude messages from recent DB messages + the new user message
-    const conversationMessages: any[] = recentMessages.map(m => ({
-      role: m.role, content: m.content,
+    const conversationMessages: Anthropic.MessageParam[] = recentMessages.map(m => ({
+      role: m.role as 'user' | 'assistant', content: m.content,
     }))
     conversationMessages.push({ role: 'user', content: newUserMessage })
-    let finalResponseText = ''
     const previews: { type: string; data: any }[] = []
 
+    const baseParams = {
+      model: 'claude-sonnet-4-20250514' as const,
+      max_tokens: 4000,
+      system: systemPrompt,
+      tools: tools as Anthropic.Tool[],
+    }
+
+    // Phase 1: Non-streaming tool-use loop (tool calls are fast DB writes)
     for (let i = 0; i < MAX_ITERATIONS; i++) {
-      const res = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: apiHeaders,
-        body: JSON.stringify({
-          model: 'claude-sonnet-4-20250514',
-          max_tokens: 4000,
-          system: systemPrompt,
-          tools,
-          messages: conversationMessages,
-        }),
-      })
+      const result = await anthropic.messages.create({ ...baseParams, messages: conversationMessages })
 
-      if (!res.ok) {
-        const errBody = await res.text().catch(() => 'unknown')
-        console.error('Anthropic API error:', res.status, errBody)
-        if (finalResponseText) return NextResponse.json({ message: finalResponseText })
-        return NextResponse.json({
-          error: 'API error',
-          message: 'Trish is temporarily unavailable. Try again in a moment.',
-          debug: process.env.NODE_ENV === 'development' ? errBody : undefined,
-        }, { status: 502 })
+      if (!result?.content?.length) {
+        return NextResponse.json({ message: 'Trish is temporarily unavailable. Try again in a moment.' })
       }
-
-      const result = await res.json()
-      if (!result?.content) {
-        if (finalResponseText) break
-        return NextResponse.json({ error: 'Empty response', message: 'Trish is temporarily unavailable. Try again in a moment.' }, { status: 502 })
-      }
-
-      conversationMessages.push({ role: 'assistant', content: result.content })
-
-      const textBlocks = (result.content || []).filter((b: any) => b.type === 'text')
-      const joined = textBlocks.map((b: any) => b.text).join('\n').trim()
-      if (joined) finalResponseText = joined
 
       if (result.stop_reason !== 'tool_use') break
 
-      const toolUseBlocks = (result.content || []).filter((b: any) => b.type === 'tool_use')
-      const toolResults: any[] = []
+      conversationMessages.push({ role: 'assistant', content: result.content })
+      const toolUseBlocks = result.content.filter((b): b is Anthropic.ToolUseBlock => b.type === 'tool_use')
+      const toolResults: Anthropic.ToolResultBlockParam[] = []
 
       for (const toolCall of toolUseBlocks) {
         const toolResult = await executeToolCall(toolCall.name, toolCall.input, user.id, previewMode)
@@ -620,18 +595,50 @@ ${REMEMBER_FACT_PROMPT}`
       conversationMessages.push({ role: 'user', content: toolResults })
     }
 
-    if (!finalResponseText) {
-      return NextResponse.json({ error: 'Empty response', message: 'Trish is temporarily unavailable. Try again in a moment.' }, { status: 502 })
-    }
+    // Phase 2: Stream the final response
+    const encoder = new TextEncoder()
+    let fullText = ''
 
-    // Save assistant response and trigger background summary
-    void saveMessage(user.id, conversation.id, 'assistant', finalResponseText)
-    void maybeUpdateSummary(conversation.id)
+    const stream = new ReadableStream({
+      async start(controller) {
+        try {
+          // Send conversationId + any previews as the first SSE event
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+            type: 'meta',
+            conversationId: conversation.id,
+            ...(previews.length > 0 && { previews }),
+          })}\n\n`))
 
-    return NextResponse.json({
-      message: finalResponseText,
-      conversationId: conversation.id,
-      ...(previews.length > 0 && { previews }),
+          const messageStream = anthropic.messages.stream({ ...baseParams, messages: conversationMessages })
+
+          messageStream.on('text', (text) => {
+            fullText += text
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'delta', text })}\n\n`))
+          })
+
+          await messageStream.finalMessage()
+
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'done' })}\n\n`))
+          controller.close()
+
+          if (fullText.trim()) {
+            void saveMessage(user.id, conversation.id, 'assistant', fullText.trim())
+            void maybeUpdateSummary(conversation.id)
+          }
+        } catch (err) {
+          console.error('STREAM ERROR:', err)
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'error', message: 'Trish is temporarily unavailable.' })}\n\n`))
+          controller.close()
+        }
+      },
+    })
+
+    return new Response(stream, {
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+      },
     })
   } catch (err: unknown) {
     console.error('Tapering plan error:', err)

@@ -180,10 +180,10 @@ export default function ActiveWorkoutPlan({ userId, onLogExercise }: Props) {
         <p className="text-xs text-[#6B7A72] mt-1">Let Trish build you one based on your fitness level and goals.</p>
       </div>
       <div className="flex flex-col sm:flex-row gap-2 w-full max-w-xs mx-auto">
-        <Link href="/maintenance?tab=coach&action=generate_daily_workout" className="flex-1 bg-gradient-to-r from-[#4A90D9] to-[#5AA0E9] text-white px-5 py-2.5 rounded-2xl text-xs font-semibold text-center hover:shadow-lg transition-all">
+        <Link href="/maintenance?tab=exercise&action=generate_daily_workout" className="flex-1 bg-gradient-to-r from-[#4A90D9] to-[#5AA0E9] text-white px-5 py-2.5 rounded-2xl text-xs font-semibold text-center hover:shadow-lg transition-all">
           Today&apos;s workout
         </Link>
-        <Link href="/maintenance?tab=coach&action=generate_weekly_workout" className="flex-1 bg-white border border-[#4A90D9] text-[#4A90D9] px-5 py-2.5 rounded-2xl text-xs font-semibold text-center hover:bg-[#EDF5FC] transition-all">
+        <Link href="/maintenance?tab=exercise&action=generate_weekly_workout" className="flex-1 bg-white border border-[#4A90D9] text-[#4A90D9] px-5 py-2.5 rounded-2xl text-xs font-semibold text-center hover:bg-[#EDF5FC] transition-all">
           Weekly plan
         </Link>
       </div>

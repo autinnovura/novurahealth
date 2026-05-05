@@ -257,21 +257,27 @@ function MaintenanceInner() {
     return () => window.visualViewport?.removeEventListener('resize', handler)
   }, [])
 
-  // Handle action/context query params — auto-send to coach
+  // Handle action/context query params — generate plans inline
   useEffect(() => {
     if (actionHandled || loading || !userId) return
     if (actionParam) {
       setActionHandled(true)
-      setActiveTab('coach')
-      const actionMessages: Record<string, string> = {
-        generate_daily_meal: 'Generate me a daily meal plan',
-        generate_weekly_meal: 'Generate me a weekly meal plan',
-        generate_daily_workout: "Generate me today's workout",
-        generate_weekly_workout: 'Generate me a weekly exercise plan',
-      }
-      const msg = actionMessages[actionParam]
-      if (msg) {
-        setTimeout(() => sendChat(msg), 500)
+      if (actionParam === 'generate_daily_meal') {
+        setActiveTab('nutrition')
+        setMealPlanType('daily')
+        setTimeout(() => generateMealPlan(), 300)
+      } else if (actionParam === 'generate_weekly_meal') {
+        setActiveTab('nutrition')
+        setMealPlanType('weekly')
+        setTimeout(() => generateMealPlan(), 300)
+      } else if (actionParam === 'generate_daily_workout') {
+        setActiveTab('exercise')
+        setExercisePlanType('daily')
+        setTimeout(() => generateExercisePlan(), 300)
+      } else if (actionParam === 'generate_weekly_workout') {
+        setActiveTab('exercise')
+        setExercisePlanType('weekly')
+        setTimeout(() => generateExercisePlan(), 300)
       }
     }
   }, [actionParam, actionHandled, loading, userId])
@@ -799,15 +805,17 @@ function MaintenanceInner() {
                 <UtensilsCrossed className="w-4 h-4 text-[#1F4B32]" />
                 <h3 className="text-sm font-semibold text-[#0D1F16]">Generate Meal Plan</h3>
               </div>
-              <p className="text-xs text-[#6B7A72]">Let Trish build you a plan based on your protein and calorie targets.</p>
+              <p className="text-xs text-[#6B7A72]">Get a plan based on your protein and calorie targets.</p>
               <div className="flex flex-col sm:flex-row gap-2">
-                <button onClick={() => { setActiveTab('coach'); setTimeout(() => sendChat('Generate me a daily meal plan'), 300) }}
-                  className="flex-1 bg-gradient-to-r from-[#1F4B32] to-[#2D6B45] text-white py-3 rounded-2xl text-sm font-semibold cursor-pointer hover:shadow-[0_4px_16px_-4px_rgba(31,75,50,0.4)] transition-all duration-300">
-                  Daily plan
+                <button onClick={() => { setMealPlanType('daily'); generateMealPlan() }}
+                  disabled={generating === 'meal'}
+                  className="flex-1 bg-gradient-to-r from-[#1F4B32] to-[#2D6B45] text-white py-3 rounded-2xl text-sm font-semibold cursor-pointer hover:shadow-[0_4px_16px_-4px_rgba(31,75,50,0.4)] transition-all duration-300 disabled:opacity-50">
+                  {generating === 'meal' && mealPlanType === 'daily' ? 'Generating...' : 'Daily plan'}
                 </button>
-                <button onClick={() => { setActiveTab('coach'); setTimeout(() => sendChat('Generate me a weekly meal plan'), 300) }}
-                  className="flex-1 py-3 rounded-2xl text-sm font-semibold border border-[#1F4B32] text-[#1F4B32] cursor-pointer hover:bg-[#F5F8F3] transition-all duration-300">
-                  Weekly plan
+                <button onClick={() => { setMealPlanType('weekly'); generateMealPlan() }}
+                  disabled={generating === 'meal'}
+                  className="flex-1 py-3 rounded-2xl text-sm font-semibold border border-[#1F4B32] text-[#1F4B32] cursor-pointer hover:bg-[#F5F8F3] transition-all duration-300 disabled:opacity-50">
+                  {generating === 'meal' && mealPlanType === 'weekly' ? 'Generating...' : 'Weekly plan'}
                 </button>
               </div>
             </div>
@@ -818,19 +826,18 @@ function MaintenanceInner() {
                 <UtensilsCrossed className="w-4 h-4 text-[#1F4B32]" />
                 <h3 className="text-sm font-semibold text-[#0D1F16]">Your Meal Plans</h3>
               </div>
-              <button onClick={() => setActiveTab('coach')}
-                className="w-full flex items-center justify-between p-3.5 rounded-2xl bg-gradient-to-br from-[#F5F8F3] to-white border border-[#EAF2EB] hover:scale-[1.01] active:scale-[0.99] transition-transform cursor-pointer">
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[#C4742B] to-[#D4843B] flex items-center justify-center">
-                    <MessageCircle className="w-4 h-4 text-white" />
-                  </div>
-                  <div className="text-left">
-                    <div className="text-xs font-semibold text-[#0D1F16]">Want a new plan?</div>
-                    <div className="text-[10px] text-[#6B7A72]">Ask Trish for adjustments or a fresh meal plan</div>
-                  </div>
-                </div>
-                <ChevronRight className="w-4 h-4 text-[#6B7A72]" />
-              </button>
+              <div className="flex gap-2">
+                <button onClick={() => { setMealPlanType('daily'); generateMealPlan() }}
+                  disabled={generating === 'meal'}
+                  className="flex-1 bg-gradient-to-r from-[#1F4B32] to-[#2D6B45] text-white py-2.5 rounded-2xl text-xs font-semibold cursor-pointer hover:shadow-[0_4px_16px_-4px_rgba(31,75,50,0.4)] transition-all duration-300 disabled:opacity-50">
+                  {generating === 'meal' && mealPlanType === 'daily' ? 'Generating...' : 'New daily plan'}
+                </button>
+                <button onClick={() => { setMealPlanType('weekly'); generateMealPlan() }}
+                  disabled={generating === 'meal'}
+                  className="flex-1 py-2.5 rounded-2xl text-xs font-semibold border border-[#1F4B32] text-[#1F4B32] cursor-pointer hover:bg-[#F5F8F3] transition-all duration-300 disabled:opacity-50">
+                  {generating === 'meal' && mealPlanType === 'weekly' ? 'Generating...' : 'New weekly plan'}
+                </button>
+              </div>
             </div>
           )}
 
@@ -949,15 +956,17 @@ function MaintenanceInner() {
                 <Dumbbell className="w-4 h-4 text-[#1F4B32]" />
                 <h3 className="text-sm font-semibold text-[#0D1F16]">Generate Exercise Plan</h3>
               </div>
-              <p className="text-xs text-[#6B7A72]">Let Trish build you a plan based on your fitness level and goals.</p>
+              <p className="text-xs text-[#6B7A72]">Get a plan based on your fitness level and goals.</p>
               <div className="flex flex-col sm:flex-row gap-2">
-                <button onClick={() => { setActiveTab('coach'); setTimeout(() => sendChat("Generate me today's workout"), 300) }}
-                  className="flex-1 bg-gradient-to-r from-[#1F4B32] to-[#2D6B45] text-white py-3 rounded-2xl text-sm font-semibold cursor-pointer hover:shadow-[0_4px_16px_-4px_rgba(31,75,50,0.4)] transition-all duration-300">
-                  Today&apos;s workout
+                <button onClick={() => { setExercisePlanType('daily'); generateExercisePlan() }}
+                  disabled={generating === 'exercise'}
+                  className="flex-1 bg-gradient-to-r from-[#1F4B32] to-[#2D6B45] text-white py-3 rounded-2xl text-sm font-semibold cursor-pointer hover:shadow-[0_4px_16px_-4px_rgba(31,75,50,0.4)] transition-all duration-300 disabled:opacity-50">
+                  {generating === 'exercise' && exercisePlanType === 'daily' ? 'Generating...' : "Today's workout"}
                 </button>
-                <button onClick={() => { setActiveTab('coach'); setTimeout(() => sendChat('Generate me a weekly exercise plan'), 300) }}
-                  className="flex-1 py-3 rounded-2xl text-sm font-semibold border border-[#1F4B32] text-[#1F4B32] cursor-pointer hover:bg-[#F5F8F3] transition-all duration-300">
-                  Weekly plan
+                <button onClick={() => { setExercisePlanType('weekly'); generateExercisePlan() }}
+                  disabled={generating === 'exercise'}
+                  className="flex-1 py-3 rounded-2xl text-sm font-semibold border border-[#1F4B32] text-[#1F4B32] cursor-pointer hover:bg-[#F5F8F3] transition-all duration-300 disabled:opacity-50">
+                  {generating === 'exercise' && exercisePlanType === 'weekly' ? 'Generating...' : 'Weekly plan'}
                 </button>
               </div>
             </div>
@@ -968,19 +977,18 @@ function MaintenanceInner() {
                 <Dumbbell className="w-4 h-4 text-[#1F4B32]" />
                 <h3 className="text-sm font-semibold text-[#0D1F16]">Your Workout Plans</h3>
               </div>
-              <button onClick={() => setActiveTab('coach')}
-                className="w-full flex items-center justify-between p-3.5 rounded-2xl bg-gradient-to-br from-[#F5F8F3] to-white border border-[#EAF2EB] hover:scale-[1.01] active:scale-[0.99] transition-transform cursor-pointer">
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[#C4742B] to-[#D4843B] flex items-center justify-center">
-                    <MessageCircle className="w-4 h-4 text-white" />
-                  </div>
-                  <div className="text-left">
-                    <div className="text-xs font-semibold text-[#0D1F16]">Want a new plan?</div>
-                    <div className="text-[10px] text-[#6B7A72]">Ask Trish for adjustments or a fresh workout plan</div>
-                  </div>
-                </div>
-                <ChevronRight className="w-4 h-4 text-[#6B7A72]" />
-              </button>
+              <div className="flex gap-2">
+                <button onClick={() => { setExercisePlanType('daily'); generateExercisePlan() }}
+                  disabled={generating === 'exercise'}
+                  className="flex-1 bg-gradient-to-r from-[#1F4B32] to-[#2D6B45] text-white py-2.5 rounded-2xl text-xs font-semibold cursor-pointer hover:shadow-[0_4px_16px_-4px_rgba(31,75,50,0.4)] transition-all duration-300 disabled:opacity-50">
+                  {generating === 'exercise' && exercisePlanType === 'daily' ? 'Generating...' : "New daily workout"}
+                </button>
+                <button onClick={() => { setExercisePlanType('weekly'); generateExercisePlan() }}
+                  disabled={generating === 'exercise'}
+                  className="flex-1 py-2.5 rounded-2xl text-xs font-semibold border border-[#1F4B32] text-[#1F4B32] cursor-pointer hover:bg-[#F5F8F3] transition-all duration-300 disabled:opacity-50">
+                  {generating === 'exercise' && exercisePlanType === 'weekly' ? 'Generating...' : 'New weekly plan'}
+                </button>
+              </div>
             </div>
           )}
 

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { z } from 'zod'
+import Anthropic from '@anthropic-ai/sdk'
 import { getAuthedUser, unauthorized } from '../../lib/auth'
 import { chatLimiter, checkRateLimit } from '../../lib/rate-limit'
 import { validateRequestBody } from '../../lib/validation'
@@ -39,6 +40,8 @@ const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || '',
   process.env.SUPABASE_SERVICE_ROLE_KEY || ''
 )
+
+const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
 async function getUserContext(userId: string) {
   const now = new Date()
@@ -498,20 +501,11 @@ Max 1 question per response. Never more.
   ]
 
   try {
-    const apiHeaders = {
-      'Content-Type': 'application/json',
-      'x-api-key': process.env.ANTHROPIC_API_KEY || '',
-      'anthropic-version': '2023-06-01',
-    }
-
-    // Tool-use loop: send message, execute any tool calls, repeat until text-only response
     const MAX_ITERATIONS = 5
-    // Build Claude messages from recent DB messages + the new user message
-    const conversationMessages: any[] = recentMessages.map(m => ({
-      role: m.role, content: m.content,
+    const conversationMessages: Anthropic.MessageParam[] = recentMessages.map(m => ({
+      role: m.role as 'user' | 'assistant', content: m.content,
     }))
     conversationMessages.push({ role: 'user', content: newUserMessage })
-    let finalResponseText = ''
 
     // Token budget logging
     const recentTokens = estimateTokens(recentMessages.map(m => m.content).join(' '))
@@ -526,48 +520,28 @@ Max 1 question per response. Never more.
       total_context: recentTokens + summaryTokens + factsTokens,
     })
 
+    const baseParams = {
+      model: 'claude-sonnet-4-20250514' as const,
+      max_tokens: 1024,
+      system: systemPrompt,
+      tools: tools as Anthropic.Tool[],
+    }
+
+    // Phase 1: Non-streaming tool-use loop (tool calls are fast DB writes)
     for (let i = 0; i < MAX_ITERATIONS; i++) {
-      const res = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: apiHeaders,
-        body: JSON.stringify({
-          model: 'claude-sonnet-4-20250514',
-          max_tokens: 1024,
-          system: systemPrompt,
-          tools,
-          messages: conversationMessages,
-        }),
-      })
+      const result = await anthropic.messages.create({ ...baseParams, messages: conversationMessages })
 
-      if (!res.ok) {
-        const errorBody = await res.text()
-        console.error('ANTHROPIC ERROR:', errorBody)
-        if (finalResponseText) return NextResponse.json({ message: finalResponseText })
+      if (!result?.content?.length) {
         return NextResponse.json({ message: "Nova is temporarily unavailable. Please try again." })
       }
 
-      const result = await res.json()
-
-      // Guard against empty/missing content
-      if (!result?.content) {
-        if (finalResponseText) break
-        return NextResponse.json({ message: "Nova is temporarily unavailable. Please try again." })
-      }
-
-      // Add assistant response to conversation history
-      conversationMessages.push({ role: 'assistant', content: result.content })
-
-      // Collect any text from this iteration
-      const textBlocks = (result.content || []).filter((b: any) => b.type === 'text')
-      const joined = textBlocks.map((b: any) => b.text).join('\n').trim()
-      if (joined) finalResponseText = joined
-
-      // If no tool use requested, we're done
+      // If no tool use, we have our final text — break to stream phase
       if (result.stop_reason !== 'tool_use') break
 
-      // Execute tool calls and build tool_result message
-      const toolUseBlocks = (result.content || []).filter((b: any) => b.type === 'tool_use')
-      const toolResults: any[] = []
+      // Execute tool calls and continue the loop
+      conversationMessages.push({ role: 'assistant', content: result.content })
+      const toolUseBlocks = result.content.filter((b): b is Anthropic.ToolUseBlock => b.type === 'tool_use')
+      const toolResults: Anthropic.ToolResultBlockParam[] = []
 
       for (const toolCall of toolUseBlocks) {
         const toolResult = await executeToolCall(toolCall.name, toolCall.input, user.id)
@@ -583,17 +557,47 @@ Max 1 question per response. Never more.
       conversationMessages.push({ role: 'user', content: toolResults })
     }
 
-    if (!finalResponseText) {
-      return NextResponse.json({ message: "Nova is temporarily unavailable. Please try again." })
-    }
+    // Phase 2: Stream the final response
+    const encoder = new TextEncoder()
+    let fullText = ''
 
-    // Save assistant response and trigger background summary
-    void saveMessage(user.id, conversation.id, 'assistant', finalResponseText)
-    void maybeUpdateSummary(conversation.id)
+    const stream = new ReadableStream({
+      async start(controller) {
+        try {
+          // Send conversationId as the first SSE event
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'meta', conversationId: conversation.id })}\n\n`))
 
-    return NextResponse.json({
-      message: finalResponseText,
-      conversationId: conversation.id,
+          const messageStream = anthropic.messages.stream({ ...baseParams, messages: conversationMessages })
+
+          messageStream.on('text', (text) => {
+            fullText += text
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'delta', text })}\n\n`))
+          })
+
+          await messageStream.finalMessage()
+
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'done' })}\n\n`))
+          controller.close()
+
+          // Save assistant response and trigger background summary
+          if (fullText.trim()) {
+            void saveMessage(user.id, conversation.id, 'assistant', fullText.trim())
+            void maybeUpdateSummary(conversation.id)
+          }
+        } catch (err) {
+          console.error('STREAM ERROR:', err)
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'error', message: 'Nova is temporarily unavailable.' })}\n\n`))
+          controller.close()
+        }
+      },
+    })
+
+    return new Response(stream, {
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+      },
     })
   } catch (error) {
     console.error('CHAT ROUTE ERROR:', error)

@@ -8,7 +8,7 @@ import DataImport from '../components/DataImport'
 import BottomNav from '../components/BottomNav'
 import InstallAppCard from '../components/InstallAppCard'
 import MedicationPicker from '../components/MedicationPicker'
-import { ArrowLeft, ChevronRight, Download, AlertTriangle, User, Lock, Database, Brain, Pin, PinOff, Pencil, Trash2, Plus, MessageCircle, X, DollarSign, Bell } from 'lucide-react'
+import { ArrowLeft, ChevronRight, Download, AlertTriangle, User, Lock, Database, Brain, Pin, PinOff, Pencil, Trash2, Plus, MessageCircle, X, DollarSign, Bell, Shield, ShieldCheck, ShieldOff } from 'lucide-react'
 
 interface Profile {
   name: string; medication: string; dose: string; start_date: string
@@ -66,6 +66,16 @@ export default function Settings() {
   const [passwordSuccess, setPasswordSuccess] = useState(false)
   const [changingPassword, setChangingPassword] = useState(false)
 
+  // MFA
+  const [mfaEnrolled, setMfaEnrolled] = useState(false)
+  const [mfaEnrolling, setMfaEnrolling] = useState(false)
+  const [mfaQrCode, setMfaQrCode] = useState('')
+  const [mfaSecret, setMfaSecret] = useState('')
+  const [mfaFactorId, setMfaFactorId] = useState('')
+  const [mfaVerifyCode, setMfaVerifyCode] = useState('')
+  const [mfaError, setMfaError] = useState('')
+  const [mfaLoading, setMfaLoading] = useState(false)
+
   // Danger zone
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [deleteText, setDeleteText] = useState('')
@@ -111,6 +121,15 @@ export default function Settings() {
         setPushEnabled(p.push_reminders_enabled ?? false)
         setPreShotEnabled(p.pre_shot_reminder_enabled ?? true)
         setWeeklyDigestEnabled(p.weekly_digest_enabled ?? true)
+      }
+      // Check MFA enrollment status
+      const { data: mfaData } = await supabase.auth.mfa.listFactors()
+      if (mfaData?.totp && mfaData.totp.length > 0) {
+        const verified = mfaData.totp.find(f => f.status === 'verified')
+        if (verified) {
+          setMfaEnrolled(true)
+          setMfaFactorId(verified.id)
+        }
       }
       setLoading(false)
     }
@@ -166,6 +185,48 @@ export default function Settings() {
     setNewPassword('')
     setConfirmPassword('')
     setTimeout(() => { setPasswordSuccess(false); setShowPasswordChange(false) }, 2000)
+  }
+
+  async function startMfaEnroll() {
+    setMfaError('')
+    setMfaEnrolling(true)
+    setMfaLoading(true)
+    const { data, error } = await supabase.auth.mfa.enroll({ factorType: 'totp', friendlyName: 'NovuraHealth' })
+    setMfaLoading(false)
+    if (error) { setMfaError(error.message); setMfaEnrolling(false); return }
+    if (data) {
+      setMfaQrCode(data.totp.qr_code)
+      setMfaSecret(data.totp.secret)
+      setMfaFactorId(data.id)
+    }
+  }
+
+  async function verifyMfaEnroll() {
+    setMfaError('')
+    if (mfaVerifyCode.length !== 6) { setMfaError('Enter a 6-digit code'); return }
+    setMfaLoading(true)
+    const { data: challenge, error: challengeErr } = await supabase.auth.mfa.challenge({ factorId: mfaFactorId })
+    if (challengeErr) { setMfaError(challengeErr.message); setMfaLoading(false); return }
+    const { error: verifyErr } = await supabase.auth.mfa.verify({ factorId: mfaFactorId, challengeId: challenge.id, code: mfaVerifyCode })
+    setMfaLoading(false)
+    if (verifyErr) { setMfaError('Invalid code. Please try again.'); return }
+    setMfaEnrolled(true)
+    setMfaEnrolling(false)
+    setMfaQrCode('')
+    setMfaSecret('')
+    setMfaVerifyCode('')
+    toast.success('Two-factor authentication enabled')
+  }
+
+  async function unenrollMfa() {
+    setMfaError('')
+    setMfaLoading(true)
+    const { error } = await supabase.auth.mfa.unenroll({ factorId: mfaFactorId })
+    setMfaLoading(false)
+    if (error) { setMfaError(error.message); return }
+    setMfaEnrolled(false)
+    setMfaFactorId('')
+    toast.success('Two-factor authentication disabled')
   }
 
   async function deleteAccount() {
@@ -312,8 +373,38 @@ export default function Settings() {
     }
   }, [activeSection])
 
-  async function exportData() {
+  // Export
+  const [showExportPassword, setShowExportPassword] = useState(false)
+  const [exportPassword, setExportPassword] = useState('')
+  const [exporting, setExporting] = useState(false)
+
+  async function encryptExport(plaintext: string, password: string): Promise<ArrayBuffer> {
+    const enc = new TextEncoder()
+    const salt = crypto.getRandomValues(new Uint8Array(16))
+    const iv = crypto.getRandomValues(new Uint8Array(12))
+    const keyMaterial = await crypto.subtle.importKey('raw', enc.encode(password), 'PBKDF2', false, ['deriveBits', 'deriveKey'])
+    const key = await crypto.subtle.deriveKey(
+      { name: 'PBKDF2', salt, iterations: 600000, hash: 'SHA-256' },
+      keyMaterial,
+      { name: 'AES-GCM', length: 256 },
+      false,
+      ['encrypt']
+    )
+    const encrypted = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, enc.encode(plaintext))
+    // Format: 4-byte magic + 16-byte salt + 12-byte iv + ciphertext
+    const magic = enc.encode('NVRA')
+    const result = new Uint8Array(4 + 16 + 12 + encrypted.byteLength)
+    result.set(magic, 0)
+    result.set(salt, 4)
+    result.set(iv, 20)
+    result.set(new Uint8Array(encrypted), 32)
+    return result.buffer
+  }
+
+  async function exportData(withPassword = false) {
     if (!userId) return
+    if (withPassword && exportPassword.length < 4) { toast.error('Password must be at least 4 characters'); return }
+    setExporting(true)
     const [weights, meds, foods, effects, water, checkins, exercises] = await Promise.all([
       supabase.from('weight_logs').select('*').eq('user_id', userId).order('logged_at', { ascending: false }),
       supabase.from('medication_logs').select('*').eq('user_id', userId).order('logged_at', { ascending: false }),
@@ -334,11 +425,31 @@ export default function Settings() {
       checkin_logs: checkins.data || [],
       exercise_logs: exercises.data || [],
     }
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url; a.download = `novura-export-${new Date().toISOString().split('T')[0]}.json`
-    a.click(); URL.revokeObjectURL(url)
+    const jsonStr = JSON.stringify(data, null, 2)
+    const dateStr = new Date().toISOString().split('T')[0]
+
+    if (withPassword) {
+      try {
+        const encrypted = await encryptExport(jsonStr, exportPassword)
+        const blob = new Blob([encrypted], { type: 'application/octet-stream' })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url; a.download = `novura-export-${dateStr}.encrypted`
+        a.click(); URL.revokeObjectURL(url)
+        setShowExportPassword(false)
+        setExportPassword('')
+        toast.success('Encrypted export downloaded')
+      } catch {
+        toast.error('Encryption failed')
+      }
+    } else {
+      const blob = new Blob([jsonStr], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url; a.download = `novura-export-${dateStr}.json`
+      a.click(); URL.revokeObjectURL(url)
+    }
+    setExporting(false)
   }
 
   if (loading) return (
@@ -605,6 +716,66 @@ export default function Settings() {
             )}
           </div>
 
+          {/* Two-Factor Authentication */}
+          <div className="bg-white border border-[#EAF2EB] rounded-3xl shadow-[0_4px_24px_-8px_rgba(31,75,50,0.08)] p-6 space-y-4">
+            <div className="flex items-center gap-2">
+              {mfaEnrolled ? <ShieldCheck className="w-4 h-4 text-[#1F4B32]" strokeWidth={1.5} /> : <Shield className="w-4 h-4 text-[#6B7A72]" strokeWidth={1.5} />}
+              <h2 className="text-sm font-semibold text-[#0D1F16]" style={{ fontFamily: 'var(--font-fraunces)' }}>Two-Factor Authentication</h2>
+            </div>
+
+            {mfaEnrolled ? (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 px-3 py-2.5 rounded-2xl bg-[#EAF2EB]">
+                  <ShieldCheck className="w-4 h-4 text-[#1F4B32]" />
+                  <p className="text-sm text-[#1F4B32] font-medium">Enabled — your account is protected</p>
+                </div>
+                <button onClick={unenrollMfa} disabled={mfaLoading}
+                  className="text-xs font-semibold text-red-500 cursor-pointer hover:text-red-600 transition-all duration-300 disabled:opacity-50">
+                  Disable two-factor authentication
+                </button>
+              </div>
+            ) : mfaEnrolling ? (
+              <div className="space-y-4">
+                <p className="text-xs text-[#6B7A72]">Scan this QR code with your authenticator app (Google Authenticator, Authy, 1Password, etc.)</p>
+                {mfaQrCode && (
+                  <div className="flex justify-center">
+                    <img src={mfaQrCode} alt="MFA QR Code" className="w-48 h-48 rounded-2xl border border-[#EAF2EB]" />
+                  </div>
+                )}
+                {mfaSecret && (
+                  <div>
+                    <p className="text-[10px] font-semibold text-[#6B7A72] uppercase tracking-wider mb-1">Manual entry key</p>
+                    <p className="text-xs font-mono text-[#0D1F16] bg-[#F5F8F3] px-3 py-2 rounded-xl break-all select-all">{mfaSecret}</p>
+                  </div>
+                )}
+                <div>
+                  <label className="text-[10px] font-semibold text-[#6B7A72] uppercase tracking-wider">Enter the 6-digit code from your app</label>
+                  <input type="text" inputMode="numeric" maxLength={6} value={mfaVerifyCode} onChange={e => setMfaVerifyCode(e.target.value.replace(/\D/g, ''))}
+                    onKeyDown={e => e.key === 'Enter' && verifyMfaEnroll()}
+                    placeholder="000000"
+                    className="w-full mt-1 px-3 py-2.5 rounded-2xl border border-[#EAF2EB] text-sm text-[#0D1F16] text-center tracking-[0.3em] font-mono outline-none focus:border-[#1F4B32] transition-all duration-300 placeholder:text-[#6B7A72]/40"/>
+                </div>
+                {mfaError && <p className="text-xs text-red-500">{mfaError}</p>}
+                <div className="flex gap-2">
+                  <button onClick={() => { setMfaEnrolling(false); setMfaQrCode(''); setMfaSecret(''); setMfaVerifyCode(''); setMfaError('') }}
+                    className="flex-1 py-2.5 rounded-2xl border border-[#EAF2EB] text-sm text-[#6B7A72] font-medium cursor-pointer hover:bg-[#F5F8F3] transition-all duration-300">Cancel</button>
+                  <button onClick={verifyMfaEnroll} disabled={mfaLoading || mfaVerifyCode.length !== 6}
+                    className="flex-1 py-2.5 rounded-2xl bg-gradient-to-r from-[#1F4B32] to-[#2D6B45] text-white text-sm font-semibold cursor-pointer hover:shadow-lg transition-all duration-300 disabled:opacity-50">
+                    {mfaLoading ? 'Verifying...' : 'Verify & Enable'}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <p className="text-xs text-[#6B7A72]">Add an extra layer of security by requiring a code from your authenticator app when logging in.</p>
+                <button onClick={startMfaEnroll} disabled={mfaLoading}
+                  className="w-full py-2.5 rounded-2xl border border-[#1F4B32] text-[#1F4B32] text-sm font-semibold cursor-pointer hover:bg-[#EAF2EB] transition-all duration-300 disabled:opacity-50">
+                  {mfaLoading ? 'Setting up...' : 'Set up two-factor authentication'}
+                </button>
+              </div>
+            )}
+          </div>
+
           {/* Session */}
           <div className="bg-white border border-[#EAF2EB] rounded-3xl shadow-[0_4px_24px_-8px_rgba(31,75,50,0.08)] p-6 space-y-4">
             <h2 className="text-sm font-semibold text-[#0D1F16]" style={{ fontFamily: 'var(--font-fraunces)' }}>Session</h2>
@@ -810,12 +981,41 @@ export default function Settings() {
           {/* Export */}
           <div className="bg-white border border-[#EAF2EB] rounded-3xl shadow-[0_4px_24px_-8px_rgba(31,75,50,0.08)] p-6 space-y-4">
             <h2 className="text-sm font-semibold text-[#0D1F16]" style={{ fontFamily: 'var(--font-fraunces)' }}>Export Your Data</h2>
-            <p className="text-xs text-[#6B7A72]">Download all your logs — weight, food, medication, side effects, water, check-ins, and exercise — as a JSON file.</p>
-            <button onClick={exportData}
-              className="w-full py-3.5 rounded-2xl border border-[#1F4B32] text-[#1F4B32] text-sm font-semibold cursor-pointer hover:bg-[#EAF2EB] transition-all duration-300 flex items-center justify-center gap-2">
-              <Download className="w-4 h-4" strokeWidth={1.5} />
-              Export All Data
-            </button>
+            <p className="text-xs text-[#6B7A72]">Download all your logs — weight, food, medication, side effects, water, check-ins, and exercise.</p>
+
+            {showExportPassword ? (
+              <div className="space-y-3">
+                <div>
+                  <label className="text-[10px] font-semibold text-[#6B7A72] uppercase tracking-wider">Set export password</label>
+                  <input type="password" value={exportPassword} onChange={e => setExportPassword(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && exportData(true)}
+                    placeholder="Password to encrypt your export"
+                    className="w-full mt-1 px-3 py-2.5 rounded-2xl border border-[#EAF2EB] text-sm text-[#0D1F16] outline-none focus:border-[#1F4B32] transition-all duration-300 placeholder:text-[#6B7A72]/40"/>
+                  <p className="text-[9px] text-[#6B7A72] mt-1">You'll need this password to decrypt the file later</p>
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={() => { setShowExportPassword(false); setExportPassword('') }}
+                    className="flex-1 py-2.5 rounded-2xl border border-[#EAF2EB] text-sm text-[#6B7A72] font-medium cursor-pointer hover:bg-[#F5F8F3] transition-all duration-300">Cancel</button>
+                  <button onClick={() => exportData(true)} disabled={exporting || exportPassword.length < 4}
+                    className="flex-1 py-2.5 rounded-2xl bg-gradient-to-r from-[#1F4B32] to-[#2D6B45] text-white text-sm font-semibold cursor-pointer hover:shadow-lg transition-all duration-300 disabled:opacity-50">
+                    {exporting ? 'Encrypting...' : 'Download Encrypted'}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <button onClick={() => exportData(false)} disabled={exporting}
+                  className="w-full py-3 rounded-2xl border border-[#1F4B32] text-[#1F4B32] text-sm font-semibold cursor-pointer hover:bg-[#EAF2EB] transition-all duration-300 flex items-center justify-center gap-2 disabled:opacity-50">
+                  <Download className="w-4 h-4" strokeWidth={1.5} />
+                  {exporting ? 'Exporting...' : 'Export as JSON'}
+                </button>
+                <button onClick={() => setShowExportPassword(true)}
+                  className="w-full py-3 rounded-2xl border border-[#EAF2EB] text-[#6B7A72] text-sm font-medium cursor-pointer hover:bg-[#F5F8F3] hover:text-[#0D1F16] transition-all duration-300 flex items-center justify-center gap-2">
+                  <Lock className="w-3.5 h-3.5" strokeWidth={1.5} />
+                  Export with password protection
+                </button>
+              </div>
+            )}
           </div>
 
           {/* App info */}

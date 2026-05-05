@@ -113,7 +113,12 @@ export default function MedicationLevelChart({ medication, dose, injectionLogs, 
   }, [injectionLogs, timeRange, currentDoseMg, halfLifeHours, now])
 
   const pastHours = timeRange === 'week' ? 168 : timeRange === 'month' ? 720 : 2160
-  const futureHours = 168
+  // Week view: 1 week forward (snapshot of current cycle)
+  // Month/90-day: project far enough to show decay to ~5% of peak (~4.5 half-lives)
+  const minDecayHours = Math.ceil(halfLifeHours * 4.5)
+  const futureHours = timeRange === 'week' ? 168
+    : timeRange === 'month' ? Math.max(720, minDecayHours)
+    : Math.max(2160, minDecayHours)
   const totalHours = pastHours + futureHours
 
   const chartData = useMemo(() => {

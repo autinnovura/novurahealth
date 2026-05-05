@@ -146,6 +146,7 @@ export default function Dashboard() {
   const [medDose, setMedDose] = useState('')
   const [customDose, setCustomDose] = useState('')
   const [medNotes, setMedNotes] = useState('')
+  const [medTime, setMedTime] = useState('')
   const [newWeight, setNewWeight] = useState('')
   const [symptom, setSymptom] = useState('')
   const [severity, setSeverity] = useState(3)
@@ -322,10 +323,12 @@ export default function Dashboard() {
 
   async function logMedication() {
     if (isSaving || !userId || !profile) return
+    if (!injectionSite) { toast.error('Please select an injection site'); return }
     setIsSaving(true)
     try {
       const finalDose = medDose === 'custom' ? `${customDose}mg` : medDose || profile.dose
-      const { data, error } = await supabase.from('medication_logs').insert({ user_id: userId, medication: profile.medication, dose: finalDose, injection_site: injectionSite, notes: medNotes }).select().single()
+      const loggedAt = medTime ? new Date(medTime).toISOString() : new Date().toISOString()
+      const { data, error } = await supabase.from('medication_logs').insert({ user_id: userId, medication: profile.medication, dose: finalDose, injection_site: injectionSite, notes: medNotes, logged_at: loggedAt }).select().single()
       if (error) { toast.error('Failed to save: ' + error.message); return }
       if (data) {
         setMedLogs(prev => [data, ...prev])
@@ -340,7 +343,7 @@ export default function Dashboard() {
       }
       toast.success('Logged!')
 
-      setModal(null); setInjectionSite(''); setMedDose(''); setCustomDose(''); setMedNotes('')
+      setModal(null); setInjectionSite(''); setMedDose(''); setCustomDose(''); setMedNotes(''); setMedTime('')
     } finally { setIsSaving(false) }
   }
 
@@ -620,9 +623,6 @@ export default function Dashboard() {
         <FirstRunModal
           userId={userId}
           name={profile.name}
-          medication={profile.medication}
-          dose={profile.dose}
-          currentWeight={profile.current_weight}
           onComplete={() => setShowFirstRun(false)}
         />
       )}
@@ -728,7 +728,7 @@ export default function Dashboard() {
             <div className="grid grid-cols-4 sm:grid-cols-7 gap-2">
               {[
                 { label: 'Food', action: () => setModal('food'), bg: 'bg-amber-50', iconColor: 'text-amber-600', Icon: Utensils },
-                { label: 'Injection', action: () => { setInjectionSite(nextSite); setModal('med') }, bg: 'bg-[#EAF2EB]', iconColor: 'text-[#1F4B32]', Icon: Syringe },
+                { label: 'Injection', action: () => { setInjectionSite(''); const n = new Date(); n.setMinutes(n.getMinutes() - n.getTimezoneOffset()); setMedTime(n.toISOString().slice(0, 16)); setModal('med') }, bg: 'bg-[#EAF2EB]', iconColor: 'text-[#1F4B32]', Icon: Syringe },
                 { label: 'Weight', action: () => setModal('weight'), bg: 'bg-blue-50', iconColor: 'text-blue-600', Icon: Scale },
                 { label: 'Water', action: () => setModal('water' as any), bg: 'bg-cyan-50', iconColor: 'text-cyan-600', Icon: Droplets },
                 { label: 'Exercise', action: () => setModal('exercise'), bg: 'bg-purple-50', iconColor: 'text-purple-600', Icon: Dumbbell },
@@ -763,7 +763,7 @@ export default function Dashboard() {
                 </p>
                 <p className="text-xs text-[#8B7355] mt-0.5">Suggested site: {nextSite}</p>
               </div>
-              <button onClick={() => { setInjectionSite(nextSite); setModal('med') }}
+              <button onClick={() => { setInjectionSite(''); const n = new Date(); n.setMinutes(n.getMinutes() - n.getTimezoneOffset()); setMedTime(n.toISOString().slice(0, 16)); setModal('med') }}
                 className="bg-[#C4742B] text-white px-4 py-2 rounded-2xl text-xs font-semibold cursor-pointer hover:shadow-[0_4px_16px_-4px_rgba(196,116,43,0.4)] transition-all duration-300">Log</button>
             </motion.div>
           )}
@@ -1054,7 +1054,7 @@ export default function Dashboard() {
         {activeTab === 'health' && (<>
           <motion.div variants={fadeUp} className="grid grid-cols-4 gap-2">
             {[
-              { icon: Syringe, label: 'Injection', action: () => setModal('med'), bg: 'from-[#1F4B32] to-[#2D6B45]' },
+              { icon: Syringe, label: 'Injection', action: () => { setInjectionSite(''); const n = new Date(); n.setMinutes(n.getMinutes() - n.getTimezoneOffset()); setMedTime(n.toISOString().slice(0, 16)); setModal('med') }, bg: 'from-[#1F4B32] to-[#2D6B45]' },
               { icon: Scale, label: 'Weight', action: () => setModal('weight'), bg: 'from-[#C4742B] to-[#D4843B]' },
               { icon: Dumbbell, label: 'Exercise', action: () => setModal('exercise'), bg: 'from-[#4A90D9] to-[#5AA0E9]' },
               { icon: Stethoscope, label: 'Symptom', action: () => setModal('sideEffect'), bg: 'from-[#6B7A72] to-[#7B8A82]' },
@@ -1278,6 +1278,11 @@ export default function Dashboard() {
             <div className="flex justify-between items-center"><h2 className="text-base font-bold text-[#0D1F16]">Log Injection</h2><button onClick={() => setModal(null)} className="w-8 h-8 rounded-xl bg-[#F5F8F3] flex items-center justify-center text-[#6B7A72] hover:bg-[#EAF2EB] cursor-pointer transition-all duration-300">✕</button></div>
             <div className="bg-[#F5F8F3] rounded-2xl px-4 py-3"><p className="text-[10px] text-[#6B7A72]">Medication</p><p className="text-sm font-semibold text-[#0D1F16]">{profile?.medication}</p></div>
             <div>
+              <p className="text-[10px] font-semibold text-[#6B7A72] uppercase tracking-wider mb-2">When</p>
+              <input type="datetime-local" value={medTime} onChange={e => setMedTime(e.target.value)}
+                className="w-full px-4 py-3 rounded-2xl border border-[#EAF2EB] text-sm text-[#0D1F16] outline-none focus:border-[#1F4B32] transition-all duration-300"/>
+            </div>
+            <div>
               <p className="text-[10px] font-semibold text-[#6B7A72] uppercase tracking-wider mb-2">Dose</p>
               <div className="flex flex-wrap gap-1.5">
                 {getMedicationDoses(profile?.medication || '').map((d: number) => (
@@ -1292,9 +1297,15 @@ export default function Dashboard() {
                   className="w-full mt-2 px-4 py-3 rounded-2xl border border-[#EAF2EB] text-sm text-[#0D1F16] outline-none focus:border-[#1F4B32] placeholder:text-[#6B7A72]/40 transition-all duration-300"/>
               )}
             </div>
-            <div><p className="text-[10px] font-semibold text-[#6B7A72] uppercase tracking-wider mb-2">Injection Site</p><div className="grid grid-cols-2 gap-2">{INJECTION_SITES.map(s => <button key={s} onClick={() => setInjectionSite(s)} className={`text-xs px-3 py-2.5 rounded-2xl border cursor-pointer transition-all duration-300 ${injectionSite===s?'border-[#1F4B32] bg-[#EAF2EB] text-[#1F4B32] font-semibold':'border-[#EAF2EB] text-[#6B7A72]'}`}>{s}</button>)}</div></div>
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-[10px] font-semibold text-[#6B7A72] uppercase tracking-wider">Injection Site</p>
+                {!injectionSite && nextSite && <p className="text-[10px] text-[#1F4B32]">Suggested: {nextSite}</p>}
+              </div>
+              <div className="grid grid-cols-2 gap-2">{INJECTION_SITES.map(s => <button key={s} onClick={() => setInjectionSite(s)} className={`text-xs px-3 py-2.5 rounded-2xl border cursor-pointer transition-all duration-300 ${injectionSite===s?'border-[#1F4B32] bg-[#EAF2EB] text-[#1F4B32] font-semibold': s === nextSite && !injectionSite ? 'border-[#1F4B32]/30 border-dashed text-[#1F4B32]/70':'border-[#EAF2EB] text-[#6B7A72]'}`}>{s}</button>)}</div>
+            </div>
             <input type="text" autoComplete="off" value={medNotes} onChange={e => setMedNotes(e.target.value)} placeholder="Notes (optional)" className="w-full px-4 py-3 rounded-2xl border border-[#EAF2EB] text-sm text-[#0D1F16] outline-none focus:border-[#1F4B32] placeholder:text-[#6B7A72]/40 transition-all duration-300"/>
-            <button onClick={logMedication} disabled={isSaving} className="w-full bg-gradient-to-r from-[#1F4B32] to-[#2D6B45] text-white py-3.5 rounded-2xl text-sm font-semibold cursor-pointer disabled:opacity-30 hover:shadow-[0_4px_16px_-4px_rgba(31,75,50,0.4)] transition-all duration-300">Save</button>
+            <button onClick={logMedication} disabled={isSaving || !injectionSite} className="w-full bg-gradient-to-r from-[#1F4B32] to-[#2D6B45] text-white py-3.5 rounded-2xl text-sm font-semibold cursor-pointer disabled:opacity-30 hover:shadow-[0_4px_16px_-4px_rgba(31,75,50,0.4)] transition-all duration-300">{isSaving ? 'Saving...' : 'Save'}</button>
           </motion.div>
         </div>
       )}

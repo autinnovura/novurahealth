@@ -1,5 +1,6 @@
 import webpush from 'web-push'
 import { createClient } from '@supabase/supabase-js'
+import { decrypt } from '../crypto'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -49,8 +50,8 @@ export async function sendPushToUser(
     const pushSubscription = {
       endpoint: sub.endpoint,
       keys: {
-        p256dh: sub.p256dh_key,
-        auth: sub.auth_key,
+        p256dh: decrypt(sub.p256dh_key) || '',
+        auth: decrypt(sub.auth_key) || '',
       },
     }
 

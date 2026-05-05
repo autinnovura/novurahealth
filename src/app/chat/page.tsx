@@ -49,6 +49,7 @@ function Chat() {
   const [showHistory, setShowHistory] = useState(false)
   const [archivedConversations, setArchivedConversations] = useState<ArchivedConversation[]>([])
   const [pinningId, setPinningId] = useState<string | null>(null)
+  const [coach, setCoach] = useState<'nova' | 'trish'>('nova')
   const scrollRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const autoSentRef = useRef(false)
@@ -59,8 +60,13 @@ function Chat() {
       if (!user) { router.push('/login'); return }
       setUserId(user.id)
 
+      // Check URL for coach param
+      const coachParam = searchParams.get('coach')
+      const activeCoach = coachParam === 'trish' ? 'trish' : 'nova'
+      setCoach(activeCoach)
+
       // Fetch active conversation
-      const convRes = await fetch('/api/conversations?coach=nova&archived=false')
+      const convRes = await fetch(`/api/conversations?coach=${activeCoach}&archived=false`)
       const convData = await convRes.json()
       const activeConv = convData.conversations?.[0]
 
@@ -107,7 +113,7 @@ function Chat() {
     const res = await fetch('/api/conversations', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ coach: 'nova' }),
+      body: JSON.stringify({ coach }),
     })
     const data = await res.json()
     if (data.conversation) {
@@ -119,10 +125,44 @@ function Chat() {
   }
 
   async function loadArchivedConversations() {
-    const res = await fetch('/api/conversations?coach=nova&archived=true')
+    const res = await fetch(`/api/conversations?coach=${coach}&archived=true`)
     const data = await res.json()
     setArchivedConversations(data.conversations || [])
     setShowHistory(true)
+  }
+
+  async function switchCoach(newCoach: 'nova' | 'trish') {
+    if (newCoach === coach) return
+    setCoach(newCoach)
+    setMessages([])
+    setConversationId(null)
+    setSummary(null)
+    setMessageCount(0)
+
+    const convRes = await fetch(`/api/conversations?coach=${newCoach}&archived=false`)
+    const convData = await convRes.json()
+    const activeConv = convData.conversations?.[0]
+
+    if (activeConv) {
+      setConversationId(activeConv.id)
+      setSummary(activeConv.summary)
+      setMessageCount(activeConv.message_count)
+
+      const { data } = await supabase
+        .from('messages').select('id, role, content, is_pinned')
+        .eq('conversation_id', activeConv.id)
+        .order('created_at', { ascending: true })
+        .limit(50)
+
+      if (data?.length) {
+        setMessages(data.map(m => ({
+          role: m.role as 'user' | 'assistant',
+          content: m.content,
+          id: m.id,
+          is_pinned: m.is_pinned,
+        })))
+      }
+    }
   }
 
   async function openConversation(convId: string) {
@@ -185,7 +225,8 @@ function Chat() {
 
     setLoading(true)
     try {
-      const res = await fetch('/api/chat', {
+      const endpoint = coach === 'trish' ? '/api/transition-coach' : '/api/chat'
+      const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -193,13 +234,78 @@ function Chat() {
           conversationId,
         }),
       })
-      const data = await res.json()
-      const novaMsg: Message = { role: 'assistant', content: data.message }
-      setMessages(prev => [...prev, novaMsg])
 
-      // Track conversation ID from response
-      if (data.conversationId && !conversationId) {
-        setConversationId(data.conversationId)
+      if (!res.ok) {
+        const errData = await res.json().catch(() => null)
+        setMessages(prev => [...prev, { role: 'assistant', content: errData?.message || 'Having trouble connecting. Try again in a sec.' }])
+        return
+      }
+
+      const contentType = res.headers.get('content-type') || ''
+
+      if (contentType.includes('text/event-stream')) {
+        // SSE streaming response
+        const reader = res.body?.getReader()
+        if (!reader) throw new Error('No reader')
+
+        const decoder = new TextDecoder()
+        let buffer = ''
+        let streamingText = ''
+        let assistantAdded = false
+
+        // Add empty assistant message to fill in
+        setMessages(prev => [...prev, { role: 'assistant', content: '' }])
+        assistantAdded = true
+        setLoading(false)
+
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+
+          buffer += decoder.decode(value, { stream: true })
+          const lines = buffer.split('\n')
+          buffer = lines.pop() || ''
+
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue
+            try {
+              const event = JSON.parse(line.slice(6))
+
+              if (event.type === 'meta') {
+                if (event.conversationId && !conversationId) {
+                  setConversationId(event.conversationId)
+                }
+              } else if (event.type === 'delta') {
+                streamingText += event.text
+                const currentText = streamingText
+                setMessages(prev => {
+                  const updated = [...prev]
+                  updated[updated.length - 1] = { role: 'assistant', content: currentText }
+                  return updated
+                })
+              } else if (event.type === 'error') {
+                if (!assistantAdded) {
+                  setMessages(prev => [...prev, { role: 'assistant', content: event.message }])
+                } else {
+                  setMessages(prev => {
+                    const updated = [...prev]
+                    updated[updated.length - 1] = { role: 'assistant', content: event.message }
+                    return updated
+                  })
+                }
+              }
+            } catch {
+              // Skip malformed SSE lines
+            }
+          }
+        }
+      } else {
+        // Fallback: JSON response (e.g. error responses)
+        const data = await res.json()
+        setMessages(prev => [...prev, { role: 'assistant', content: data.message }])
+        if (data.conversationId && !conversationId) {
+          setConversationId(data.conversationId)
+        }
       }
     } catch {
       setMessages(prev => [...prev, { role: 'assistant', content: "Having trouble connecting. Try again in a sec." }])
@@ -207,7 +313,7 @@ function Chat() {
       setLoading(false)
       inputRef.current?.focus()
     }
-  }, [userId, input, conversationId])
+  }, [userId, input, conversationId, coach])
 
   // Auto-send prompt from URL query param (e.g. ?prompt=What+should+I+eat)
   useEffect(() => {
@@ -239,12 +345,36 @@ function Chat() {
         <div className="relative px-5 py-4">
           <div className="max-w-2xl mx-auto flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-[#1F4B32] to-[#2D6B45] flex items-center justify-center shadow-[0_4px_24px_-8px_rgba(31,75,50,0.08)]">
-                <Leaf className="w-5 h-5 text-[#7FFFA4]" strokeWidth={2} />
+              <div className={`w-10 h-10 rounded-2xl flex items-center justify-center shadow-[0_4px_24px_-8px_rgba(31,75,50,0.08)] ${
+                coach === 'trish'
+                  ? 'bg-gradient-to-br from-[#4B1F3D] to-[#6B2D55]'
+                  : 'bg-gradient-to-br from-[#1F4B32] to-[#2D6B45]'
+              }`}>
+                {coach === 'trish'
+                  ? <Sparkles className="w-5 h-5 text-[#FFA4D4]" strokeWidth={2} />
+                  : <Leaf className="w-5 h-5 text-[#7FFFA4]" strokeWidth={2} />}
               </div>
               <div>
-                <h1 className="text-[#0D1F16] font-semibold text-base">Nova</h1>
-                <p className="text-[#6B7A72] text-[10px]">Your personal health coach</p>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => switchCoach('nova')}
+                    className={`text-sm font-semibold cursor-pointer transition-all duration-300 ${
+                      coach === 'nova' ? 'text-[#0D1F16]' : 'text-[#6B7A72]/50 hover:text-[#6B7A72]'
+                    }`}>
+                    Nova
+                  </button>
+                  <span className="text-[#6B7A72]/30 text-xs">/</span>
+                  <button
+                    onClick={() => switchCoach('trish')}
+                    className={`text-sm font-semibold cursor-pointer transition-all duration-300 ${
+                      coach === 'trish' ? 'text-[#0D1F16]' : 'text-[#6B7A72]/50 hover:text-[#6B7A72]'
+                    }`}>
+                    Trish
+                  </button>
+                </div>
+                <p className="text-[#6B7A72] text-[10px]">
+                  {coach === 'trish' ? 'Transition & tapering coach' : 'Your personal health coach'}
+                </p>
               </div>
             </div>
             <div className="flex items-center gap-2">
@@ -331,14 +461,22 @@ function Chat() {
         {messages.length === 0 && !loading ? (
           <div className="flex-1 flex items-center justify-center">
             <div className="text-center py-16">
-              <div className="w-16 h-16 rounded-3xl bg-gradient-to-br from-[#1F4B32] to-[#2D6B45] flex items-center justify-center mx-auto mb-6 shadow-[0_4px_24px_-8px_rgba(31,75,50,0.08)]">
-                <Sparkles className="w-7 h-7 text-[#7FFFA4]" strokeWidth={1.5} />
+              <div className={`w-16 h-16 rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-[0_4px_24px_-8px_rgba(31,75,50,0.08)] ${
+                coach === 'trish'
+                  ? 'bg-gradient-to-br from-[#4B1F3D] to-[#6B2D55]'
+                  : 'bg-gradient-to-br from-[#1F4B32] to-[#2D6B45]'
+              }`}>
+                {coach === 'trish'
+                  ? <Sparkles className="w-7 h-7 text-[#FFA4D4]" strokeWidth={1.5} />
+                  : <Sparkles className="w-7 h-7 text-[#7FFFA4]" strokeWidth={1.5} />}
               </div>
               <h2 className="text-2xl font-bold text-[#0D1F16] mb-2" style={{ fontFamily: 'var(--font-fraunces)' }}>
-                Hey, what&apos;s on your mind?
+                {coach === 'trish' ? 'Ready to plan your next move?' : 'Hey, what\u2019s on your mind?'}
               </h2>
               <p className="text-sm text-[#6B7A72] mb-8 max-w-xs mx-auto leading-relaxed">
-                I know your data — meals, weight, meds, all of it. Ask me anything about your journey.
+                {coach === 'trish'
+                  ? 'I\u2019ll build your tapering plan, meal plans, and workouts. Let\u2019s go.'
+                  : 'I know your data \u2014 meals, weight, meds, all of it. Ask me anything about your journey.'}
               </p>
               <div className="flex flex-wrap justify-center gap-2">
                 {QUICK_ACTIONS.map(q => (
@@ -358,8 +496,14 @@ function Chat() {
           {messages.map((msg, i) => (
             <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} group`}>
               {msg.role === 'assistant' && (
-                <div className="w-7 h-7 rounded-full bg-gradient-to-br from-[#1F4B32] to-[#2D6B45] flex items-center justify-center shrink-0 mr-2 mt-1">
-                  <Leaf className="w-3.5 h-3.5 text-[#7FFFA4]" strokeWidth={2} />
+                <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 mr-2 mt-1 ${
+                  coach === 'trish'
+                    ? 'bg-gradient-to-br from-[#4B1F3D] to-[#6B2D55]'
+                    : 'bg-gradient-to-br from-[#1F4B32] to-[#2D6B45]'
+                }`}>
+                  {coach === 'trish'
+                    ? <Sparkles className="w-3.5 h-3.5 text-[#FFA4D4]" strokeWidth={2} />
+                    : <Leaf className="w-3.5 h-3.5 text-[#7FFFA4]" strokeWidth={2} />}
                 </div>
               )}
               <div className="relative">
@@ -376,7 +520,7 @@ function Chat() {
                     onClick={() => pinMessage(msg.id!, msg.content)}
                     disabled={pinningId === msg.id}
                     className="absolute -right-1 top-1 opacity-0 group-hover:opacity-100 p-1.5 rounded-full bg-white border border-[#EAF2EB] shadow-sm text-[#6B7A72] hover:text-[#1F4B32] cursor-pointer transition-all duration-200"
-                    title="Pin — Nova will remember this">
+                    title={`Pin — ${coach === 'trish' ? 'Trish' : 'Nova'} will remember this`}>
                     <Pin className="w-3 h-3" />
                   </button>
                 )}
@@ -391,14 +535,20 @@ function Chat() {
 
           {loading && (
             <div className="flex justify-start">
-              <div className="w-7 h-7 rounded-full bg-gradient-to-br from-[#1F4B32] to-[#2D6B45] flex items-center justify-center shrink-0 mr-2 mt-1">
-                <Leaf className="w-3.5 h-3.5 text-[#7FFFA4]" strokeWidth={2} />
+              <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 mr-2 mt-1 ${
+                coach === 'trish'
+                  ? 'bg-gradient-to-br from-[#4B1F3D] to-[#6B2D55]'
+                  : 'bg-gradient-to-br from-[#1F4B32] to-[#2D6B45]'
+              }`}>
+                {coach === 'trish'
+                  ? <Sparkles className="w-3.5 h-3.5 text-[#FFA4D4]" strokeWidth={2} />
+                  : <Leaf className="w-3.5 h-3.5 text-[#7FFFA4]" strokeWidth={2} />}
               </div>
               <div className="bg-white border border-[#EAF2EB] px-4 py-3 rounded-3xl rounded-bl-md shadow-[0_4px_24px_-8px_rgba(31,75,50,0.08)]">
                 <div className="flex gap-1.5">
-                  <div className="w-2 h-2 rounded-full bg-[#7FFFA4] animate-bounce" style={{ animationDelay: '0ms' }} />
-                  <div className="w-2 h-2 rounded-full bg-[#7FFFA4] animate-bounce" style={{ animationDelay: '150ms' }} />
-                  <div className="w-2 h-2 rounded-full bg-[#7FFFA4] animate-bounce" style={{ animationDelay: '300ms' }} />
+                  <div className={`w-2 h-2 rounded-full animate-bounce ${coach === 'trish' ? 'bg-[#FFA4D4]' : 'bg-[#7FFFA4]'}`} style={{ animationDelay: '0ms' }} />
+                  <div className={`w-2 h-2 rounded-full animate-bounce ${coach === 'trish' ? 'bg-[#FFA4D4]' : 'bg-[#7FFFA4]'}`} style={{ animationDelay: '150ms' }} />
+                  <div className={`w-2 h-2 rounded-full animate-bounce ${coach === 'trish' ? 'bg-[#FFA4D4]' : 'bg-[#7FFFA4]'}`} style={{ animationDelay: '300ms' }} />
                 </div>
               </div>
             </div>
@@ -432,7 +582,7 @@ function Chat() {
               value={input}
               onChange={e => setInput(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), sendMessage())}
-              placeholder="Ask Nova anything..."
+              placeholder={coach === 'trish' ? 'Ask Trish anything...' : 'Ask Nova anything...'}
               className="flex-1 px-4 py-3 rounded-3xl border border-[#EAF2EB] bg-white text-sm text-[#0D1F16] outline-none focus:border-[#1F4B32] placeholder:text-[#6B7A72]/50 shadow-[inset_0_1px_3px_rgba(31,75,50,0.04)] transition-all duration-300"
             />
             <VoiceInput onResult={(text) => setInput(text)} />

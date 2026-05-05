@@ -160,10 +160,10 @@ export default function ActiveMealPlan({ userId, onLogFood }: Props) {
         <p className="text-xs text-[#6B7A72] mt-1">Let Trish build you a plan based on your protein and calorie targets.</p>
       </div>
       <div className="flex flex-col sm:flex-row gap-2 w-full max-w-xs mx-auto">
-        <Link href="/maintenance?tab=coach&action=generate_daily_meal" className="flex-1 bg-gradient-to-r from-[#1F4B32] to-[#2D6B45] text-white px-5 py-2.5 rounded-2xl text-xs font-semibold text-center hover:shadow-lg transition-all">
+        <Link href="/maintenance?tab=nutrition&action=generate_daily_meal" className="flex-1 bg-gradient-to-r from-[#1F4B32] to-[#2D6B45] text-white px-5 py-2.5 rounded-2xl text-xs font-semibold text-center hover:shadow-lg transition-all">
           Daily plan
         </Link>
-        <Link href="/maintenance?tab=coach&action=generate_weekly_meal" className="flex-1 bg-white border border-[#1F4B32] text-[#1F4B32] px-5 py-2.5 rounded-2xl text-xs font-semibold text-center hover:bg-[#F5F8F3] transition-all">
+        <Link href="/maintenance?tab=nutrition&action=generate_weekly_meal" className="flex-1 bg-white border border-[#1F4B32] text-[#1F4B32] px-5 py-2.5 rounded-2xl text-xs font-semibold text-center hover:bg-[#F5F8F3] transition-all">
           Weekly plan
         </Link>
       </div>

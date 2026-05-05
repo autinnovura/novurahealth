@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { getAuthedUser, unauthorized } from '../../lib/auth'
+import { encrypt } from '../../lib/crypto'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -23,8 +24,8 @@ export async function POST(req: NextRequest) {
       {
         user_id: user.id,
         endpoint: subscription.endpoint,
-        p256dh_key: subscription.keys.p256dh,
-        auth_key: subscription.keys.auth,
+        p256dh_key: encrypt(subscription.keys.p256dh) || subscription.keys.p256dh,
+        auth_key: encrypt(subscription.keys.auth) || subscription.keys.auth,
       },
       { onConflict: 'endpoint' }
     )

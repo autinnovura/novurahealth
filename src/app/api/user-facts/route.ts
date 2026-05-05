@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { getAuthedUser, unauthorized } from '../../lib/auth'
+import { encrypt, decrypt } from '../../lib/crypto'
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || '',
@@ -21,7 +22,8 @@ export async function GET() {
     .order('created_at', { ascending: false })
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json({ facts: data })
+  const decryptedFacts = (data || []).map((f: Record<string, unknown>) => ({ ...f, fact: decrypt(f.fact as string) || f.fact }))
+  return NextResponse.json({ facts: decryptedFacts })
 }
 
 // POST — manually add a fact
@@ -44,7 +46,7 @@ export async function POST(req: NextRequest) {
   const { data, error } = await supabaseAdmin.from('user_facts').insert({
     user_id: user.id,
     category,
-    fact,
+    fact: encrypt(fact) || fact,
     source: 'manual',
     confidence: 1.0,
     is_active: true,
@@ -52,7 +54,7 @@ export async function POST(req: NextRequest) {
   }).select('id, category, fact, source, pinned, created_at').single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json({ fact: data })
+  return NextResponse.json({ fact: data ? { ...data, fact: decrypt(data.fact as string) || data.fact } : data })
 }
 
 // PATCH — update a fact (edit text, toggle pin, soft-delete)
@@ -72,7 +74,7 @@ export async function PATCH(req: NextRequest) {
   }
 
   const updates: Record<string, unknown> = { updated_at: new Date().toISOString() }
-  if (body.fact !== undefined) updates.fact = body.fact
+  if (body.fact !== undefined) updates.fact = encrypt(body.fact) || body.fact
   if (body.pinned !== undefined) updates.pinned = body.pinned
   if (body.is_active !== undefined) updates.is_active = body.is_active
 

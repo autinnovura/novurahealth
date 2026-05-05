@@ -1,4 +1,5 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js'
+import { encrypt, decrypt } from './crypto'
 
 const MAX_RECENT_MESSAGES = 15
 const SUMMARY_MIN_MESSAGES = 20
@@ -64,7 +65,7 @@ export async function getRecentMessages(
     .eq('conversation_id', conversationId)
     .order('created_at', { ascending: false })
     .limit(limit)
-  return (data ?? []).reverse()
+  return (data ?? []).map(m => ({ ...m, content: decrypt(m.content) || m.content })).reverse()
 }
 
 export async function getUserFacts(
@@ -80,7 +81,7 @@ export async function getUserFacts(
     .order('pinned', { ascending: false })
     .order('created_at', { ascending: false })
     .limit(limit)
-  return data ?? []
+  return (data ?? []).map(f => ({ ...f, fact: decrypt(f.fact) || f.fact }))
 }
 
 export async function saveMessage(
@@ -94,7 +95,7 @@ export async function saveMessage(
     user_id: userId,
     conversation_id: conversationId,
     role,
-    content,
+    content: encrypt(content) || content,
   })
   // Increment message_count (manual since RPC may not exist)
   const { data: convRow } = await db
@@ -129,7 +130,7 @@ export async function saveFact(
     // Update existing fact if similar
     const { error } = await db
       .from('user_facts')
-      .update({ fact, category, source, updated_at: new Date().toISOString() })
+      .update({ fact: encrypt(fact) || fact, category, source, updated_at: new Date().toISOString() })
       .eq('id', existing[0].id)
     if (error) return { success: false, error: error.message }
     return { success: true }
@@ -137,7 +138,7 @@ export async function saveFact(
   const { error } = await db.from('user_facts').insert({
     user_id: userId,
     category,
-    fact,
+    fact: encrypt(fact) || fact,
     source,
     confidence: 0.8,
     is_active: true,
@@ -179,7 +180,7 @@ export async function maybeUpdateSummary(conversationId: string): Promise<void> 
 
   const transcript = oldMessages
     .reverse()
-    .map(m => `${m.role === 'user' ? 'User' : 'Coach'}: ${m.content}`)
+    .map(m => `${m.role === 'user' ? 'User' : 'Coach'}: ${decrypt(m.content) || m.content}`)
     .join('\n\n')
 
   try {

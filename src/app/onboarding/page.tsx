@@ -83,6 +83,9 @@ export default function Onboarding() {
     setSaveError(null)
     const finalDose = dose === 'custom' ? `${customDose}mg` : `${dose}mg`
     const totalInches = (parseInt(heightFeet) || 0) * 12 + (parseInt(heightInches) || 0)
+    const now = new Date()
+    const localToday = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+
     const { error: upsertError } = await supabase.from('profiles').upsert({
       id: userId,
       name,
@@ -92,7 +95,7 @@ export default function Onboarding() {
       height_inches: totalInches || null,
       current_weight: currentWeight,
       goal_weight: goalWeight,
-      start_date: justStarting ? new Date().toISOString().split('T')[0] : startDate,
+      start_date: justStarting ? localToday : startDate,
       avg_calories: avgCalories,
       avg_protein: avgProtein,
       avg_water: avgWater,
@@ -100,14 +103,20 @@ export default function Onboarding() {
       primary_goal: 'Lose weight',
       exercise_level: '',
       biggest_challenge: '',
+      first_run_complete: true,
     })
 
     if (upsertError) {
-      // Surface the failure instead of silently redirecting into a loop.
       console.error('[onboarding] profile upsert failed:', upsertError)
       setSaveError(`${upsertError.message}${upsertError.code ? ` (code ${upsertError.code})` : ''}${upsertError.details ? ` — ${upsertError.details}` : ''}`)
       setSaving(false)
       return
+    }
+
+    // Log the starting weight automatically so we don't ask again
+    const weightNum = parseInt(currentWeight)
+    if (weightNum > 0) {
+      await supabase.from('weight_logs').insert({ user_id: userId, weight: weightNum })
     }
 
     const { data: { user } } = await supabase.auth.getUser()
