@@ -75,12 +75,15 @@ export default function Onboarding() {
     }
   }
 
+  const [saveError, setSaveError] = useState<string | null>(null)
+
   async function finish() {
     if (!userId) return
     setSaving(true)
+    setSaveError(null)
     const finalDose = dose === 'custom' ? `${customDose}mg` : `${dose}mg`
     const totalInches = (parseInt(heightFeet) || 0) * 12 + (parseInt(heightInches) || 0)
-    await supabase.from('profiles').upsert({
+    const { error: upsertError } = await supabase.from('profiles').upsert({
       id: userId,
       name,
       medication,
@@ -98,6 +101,14 @@ export default function Onboarding() {
       exercise_level: '',
       biggest_challenge: '',
     })
+
+    if (upsertError) {
+      // Surface the failure instead of silently redirecting into a loop.
+      console.error('[onboarding] profile upsert failed:', upsertError)
+      setSaveError(`${upsertError.message}${upsertError.code ? ` (code ${upsertError.code})` : ''}${upsertError.details ? ` — ${upsertError.details}` : ''}`)
+      setSaving(false)
+      return
+    }
 
     const { data: { user } } = await supabase.auth.getUser()
     if (user?.email) {
@@ -442,6 +453,12 @@ export default function Onboarding() {
 
         {/* Navigation */}
         <div className="shrink-0 pt-4 space-y-2">
+          {saveError && (
+            <div className="bg-[#FFF0F0] border border-[#C44242]/20 rounded-2xl px-4 py-3">
+              <p className="text-xs font-semibold text-[#C44242] mb-1">Couldn&apos;t save your profile</p>
+              <p className="text-[11px] text-[#8B3A3A] leading-relaxed break-words">{saveError}</p>
+            </div>
+          )}
           {step < TOTAL_STEPS ? (
             <button onClick={next} disabled={!canAdvance()}
               className="w-full bg-gradient-to-r from-[#1F4B32] to-[#2D6B45] text-white py-3.5 rounded-2xl text-sm font-semibold cursor-pointer disabled:opacity-30 transition-all active:scale-[0.98] hover:shadow-[0_4px_16px_-4px_rgba(31,75,50,0.4)]">
